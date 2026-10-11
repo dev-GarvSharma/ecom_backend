@@ -1,0 +1,10 @@
+import { Router } from "express";
+import { asyncHandler } from "../utils/http.js";
+import { authenticate } from "../middleware/security.js";
+import * as cart from "../controllers/cartController.js";
+const router = Router();
+router.get("/", authenticate, asyncHandler(cart.cartGet));
+router.post("/items", authenticate, asyncHandler(cart.cartAdd));
+router.patch("/items/:id", authenticate, asyncHandler(cart.cartUpdate));
+router.delete("/items/:id", authenticate, asyncHandler(cart.cartRemove));
+export default router;
