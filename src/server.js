@@ -69,6 +69,9 @@ app.use(
     dotfiles: "deny",
     index: false,
     maxAge: "1d",
+    setHeaders(res) {
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    },
   }),
 );
 app.use(apiPrefix, routes);
