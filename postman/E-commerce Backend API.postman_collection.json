@@ -35,7 +35,7 @@
             "url": "{{baseUrl}}/auth/register",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Test Customer\",\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}",
+              "raw": "{\n  \"name\": \"Test Customer\",\n  \"phone\": \"{{registerPhone}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -49,12 +49,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
-                  "  const body = pm.response.json();",
-                  "  if (body?.success && body.data?.accessToken) {",
-                  "    pm.environment.set(\"accessToken\", body.data.accessToken);",
-                  "    pm.environment.set(\"userId\", body.data.user?.id || \"\");",
-                  "  }",
+                  "const body = pm.response.json();",
+                  "if (body?.success) {",
+                  "  pm.environment.set(\"otp\", body.data?.otp || \"\");",
+                  "  pm.environment.set(\"authPhone\", pm.environment.get(\"registerPhone\"));",
+                  "  pm.environment.set(\"otpPurpose\", \"register\");",
+                  "  pm.environment.set(\"userId\", body.data?.userId || \"\");",
                   "}"
                 ]
               }
@@ -74,7 +74,7 @@
             "url": "{{baseUrl}}/auth/login",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}",
+              "raw": "{\n  \"phone\": \"{{authPhone}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -88,26 +88,55 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
-                  "  const body = pm.response.json();",
-                  "  const accessToken = body?.data?.accessToken;",
-                  "  if (body?.success && accessToken) {",
-                  "    pm.environment.set(\"accessToken\", accessToken);",
-                  "    pm.environment.set(\"userId\", body.data.user?.id || \"\");",
-                  "    console.info(\"Access token saved to the active environment.\");",
-                  "  } else {",
-                  "    pm.environment.unset(\"accessToken\");",
-                  "    console.warn(\"Login succeeded without an access token in the expected response.\");",
-                  "  }",
+                  "const body = pm.response.json();",
+                  "if (body?.success) {",
+                  "  pm.environment.set(\"otp\", body.data?.otp || \"\");",
+                  "  pm.environment.set(\"otpPurpose\", body.data?.purpose || \"login\");",
                   "} else {",
                   "  pm.environment.unset(\"accessToken\");",
-                  "  console.warn(\"Login failed; the saved access token was cleared.\");",
                   "}"
                 ]
               }
             }
           ],
           "response": []
+        },
+        {
+          "name": "Confirm OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/verification/confirm",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{authPhone}}\",\n  \"purpose\": \"{{otpPurpose}}\",\n  \"code\": \"{{otp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body?.success && body.data?.accessToken) {",
+                  "  pm.environment.set(\"accessToken\", body.data.accessToken);",
+                  "  pm.environment.set(\"userId\", body.data.user?.id || \"\");",
+                  "}"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Refresh session",
@@ -161,32 +190,6 @@
           }
         },
         {
-          "name": "Change password",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": "{{baseUrl}}/auth/password",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"currentPassword\": \"{{password}}\",\n  \"password\": \"{{newPassword}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
-        },
-        {
           "name": "Logout",
           "request": {
             "method": "POST",
@@ -228,7 +231,7 @@
                 "value": "Bearer {{accessToken}}"
               }
             ],
-            "url": "{{baseUrl}}/products"
+            "url": "{{baseUrl}}/catalog/products"
           }
         },
         {
@@ -241,7 +244,7 @@
                 "value": "Bearer {{accessToken}}"
               }
             ],
-            "url": "{{baseUrl}}/products?search={{search}}"
+            "url": "{{baseUrl}}/catalog/products?search={{search}}"
           }
         },
         {
@@ -254,7 +257,7 @@
                 "value": "Bearer {{accessToken}}"
               }
             ],
-            "url": "{{baseUrl}}/categories"
+            "url": "{{baseUrl}}/catalog/categories"
           }
         }
       ]
@@ -757,32 +760,6 @@
               }
             ],
             "url": "{{baseUrl}}/admin/settings",
-            "body": {
-              "mode": "raw",
-              "raw": "{}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
-        },
-        {
-          "name": "Password reset info",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": "{{baseUrl}}/admin/settings/password-reset",
             "body": {
               "mode": "raw",
               "raw": "{}",
@@ -1445,14 +1422,6 @@
       "value": "admin@gmail.com"
     },
     {
-      "key": "password",
-      "value": "Admin@123"
-    },
-    {
-      "key": "newPassword",
-      "value": "ChangeThisPassword456!"
-    },
-    {
       "key": "productId",
       "value": ""
     },
@@ -1511,6 +1480,22 @@
     {
       "key": "postalCode",
       "value": "400001"
+    },
+    {
+      "key": "authPhone",
+      "value": "+919900000000"
+    },
+    {
+      "key": "otp",
+      "value": ""
+    },
+    {
+      "key": "otpPurpose",
+      "value": "register"
+    },
+    {
+      "key": "registerPhone",
+      "value": "+919900000099"
     }
   ]
 }

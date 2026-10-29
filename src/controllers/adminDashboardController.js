@@ -1,22 +1,66 @@
 import { Op } from "sequelize";
-import { sequelize, User, Category, Product, Cart, CartItem, Order, OrderItem, Coupon, Notification, Address, Campaign, Setting } from "../database/models/index.js";
+import {
+  sequelize,
+  User,
+  Category,
+  Product,
+  ProductImage,
+  ProductVariant,
+  Cart,
+  CartItem,
+  Order,
+  OrderItem,
+  Coupon,
+  Notification,
+  Address,
+  Campaign,
+  Setting,
+  AuditLog,
+} from "../database/models/index.js";
 import { adminList } from "./adminResourceController.js";
+import * as adminCatalog from "./adminCatalogController.js";
 import { ok, fail } from "../utils/http.js";
 import { clearCache } from "../middleware/cache.js";
-
 
 export const settings = async (req, res) => {
   if (req.method === "GET") {
     const rows = await Setting.findAll();
-    return ok(
-      res,
-      Object.fromEntries(rows.map((x) => [x.key, x.value])),
-      "Settings loaded.",
-    );
+    return ok(res, Object.fromEntries(rows.map((x) => [x.key, x.value])), "Settings loaded.");
   }
-  for (const [key, value] of Object.entries(clean(req.body)))
-    await Setting.upsert({ key, value });
-  return ok(res, req.body, "Settings saved.");
+  const entries = req.body;
+  if (!entries || typeof entries !== "object" || Array.isArray(entries))
+    return fail(res, 400, "Settings must be an object keyed by setting name.");
+  const pairs = Object.entries(entries);
+  if (
+    pairs.some(
+      ([key, value]) =>
+        !/^[a-z][a-z0-9_.-]{0,119}$/.test(key) ||
+        value === undefined ||
+        (() => {
+          try {
+            return JSON.stringify(value) === undefined;
+          } catch {
+            return true;
+          }
+        })(),
+    )
+  )
+    return fail(res, 400, "Setting names or values are invalid.");
+  await sequelize.transaction(async (transaction) => {
+    for (const [key, value] of pairs) await Setting.upsert({ key, value }, { transaction });
+    if (pairs.length)
+      await AuditLog.create(
+        {
+          actorUserId: req.user.id,
+          action: "settings.update",
+          resourceType: "settings",
+          changes: { keys: pairs.map(([key]) => key) },
+          ipAddress: req.ip,
+        },
+        { transaction },
+      );
+  });
+  return ok(res, entries, "Settings saved.");
 };
 
 export const dashboard = async (_req, res) => {
@@ -53,7 +97,20 @@ export const dashboard = async (_req, res) => {
     };
   };
 
-  const [thisWeek, lastWeek, recentOrders, lowStockProducts, pendingCount, processingCount, deliveredOrders, customerCount, totalProducts, totalOrders, lifetimeSales, priorOrderRows] = await Promise.all([
+  const [
+    thisWeek,
+    lastWeek,
+    recentOrders,
+    lowStockProducts,
+    pendingCount,
+    processingCount,
+    deliveredOrders,
+    customerCount,
+    totalProducts,
+    totalOrders,
+    lifetimeSales,
+    priorOrderRows,
+  ] = await Promise.all([
     loadWeek(thisWeekStart, now),
     loadWeek(lastWeekStart, lastWeekEnd),
     Order.findAll({
@@ -64,9 +121,12 @@ export const dashboard = async (_req, res) => {
         { model: OrderItem, as: "items", attributes: ["name", "sku", "quantity", "unitPrice"] },
       ],
     }),
-    Product.findAll({
-      where: { status: "active", stock: { [Op.lte]: 10 } },
-      attributes: ["id", "name", "sku", "stock"],
+    ProductVariant.findAll({
+      where: { active: true, stock: { [Op.lte]: 10 } },
+      attributes: ["id", "sku", "stock", "options"],
+      include: [
+        { model: Product, as: "product", where: { status: "active" }, attributes: ["id", "name"] },
+      ],
       order: [["stock", "ASC"]],
       limit: 10,
     }),
@@ -106,7 +166,11 @@ export const dashboard = async (_req, res) => {
       const revenue = week.paidOrders
         .filter((order) => new Date(order.createdAt).toISOString().slice(0, 10) === key)
         .reduce((sum, order) => sum + Number(order.total || 0), 0);
-      return { date: key, day: date.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" }), revenue };
+      return {
+        date: key,
+        day: date.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" }),
+        revenue,
+      };
     });
 
   const topProductsMap = new Map();
@@ -127,12 +191,45 @@ export const dashboard = async (_req, res) => {
   const topProducts = [...topProductsMap.values()]
     .sort((a, b) => b.quantity - a.quantity)
     .slice(0, 5);
+  const topProductIds = topProducts.map((product) => product.productId).filter(Boolean);
+  const topProductImages = topProductIds.length
+    ? await Product.findAll({
+        where: { id: { [Op.in]: topProductIds } },
+        attributes: ["id"],
+        include: [
+          {
+            model: ProductImage,
+            as: "images",
+            attributes: ["path"],
+            required: false,
+          },
+        ],
+      })
+    : [];
+  const imageByProductId = new Map(
+    topProductImages.map((product) => [
+      product.id,
+      product.images?.[0]?.path || null,
+    ]),
+  );
+  const topProductsWithImages = topProducts.map((product) => ({
+    ...product,
+    image: imageByProductId.get(product.productId) || null,
+    images: topProductImages
+      .find((record) => record.id === product.productId)
+      ?.images?.map((image) => image.path) || [],
+  }));
 
   const fulfilledDurations = deliveredOrders
     .map((order) => (new Date(order.updatedAt) - new Date(order.createdAt)) / 86400000)
     .filter((duration) => Number.isFinite(duration) && duration >= 0);
   const averageFulfillmentDays = fulfilledDurations.length
-    ? Number((fulfilledDurations.reduce((sum, duration) => sum + duration, 0) / fulfilledDurations.length).toFixed(1))
+    ? Number(
+        (
+          fulfilledDurations.reduce((sum, duration) => sum + duration, 0) /
+          fulfilledDurations.length
+        ).toFixed(1),
+      )
     : null;
 
   const customersWithPriorOrders = new Set(
@@ -161,6 +258,14 @@ export const dashboard = async (_req, res) => {
     status: order.status,
     payment: order.paymentStatus,
   }));
+  const restockingProducts = lowStockProducts.map((variant) => ({
+    id: variant.id,
+    productId: variant.product.id,
+    name: variant.product.name,
+    sku: variant.sku,
+    options: variant.options,
+    stock: variant.stock,
+  }));
 
   return ok(
     res,
@@ -173,8 +278,8 @@ export const dashboard = async (_req, res) => {
       },
       orders: recent,
       recentOrders: recent,
-      products: topProducts,
-      topProducts,
+      products: topProductsWithImages,
+      topProducts: topProductsWithImages,
       salesOverview: {
         thisWeek: dailySales(thisWeek, thisWeekStart),
         lastWeek: dailySales(lastWeek, lastWeekStart),
@@ -190,8 +295,8 @@ export const dashboard = async (_req, res) => {
               : `Returning customers placed ${Math.abs(repeatPurchaseChange)}% fewer orders this week.`,
         },
         restocking: {
-          count: lowStockProducts.length,
-          products: lowStockProducts,
+          count: restockingProducts.length,
+          products: restockingProducts,
           stockThreshold: 10,
         },
         cartConversion: {
@@ -237,7 +342,10 @@ export const dashboard = async (_req, res) => {
         },
         customers: {
           value: customerCount,
-          changePercent: percentChange(currentWeekCustomers, Math.max(0, customerCount - currentWeekCustomers)),
+          changePercent: percentChange(
+            currentWeekCustomers,
+            Math.max(0, customerCount - currentWeekCustomers),
+          ),
           newThisWeek: currentWeekCustomers,
         },
         productsSold: {
@@ -251,9 +359,7 @@ export const dashboard = async (_req, res) => {
 };
 
 export const analytics = async (req, res) => {
-  const period = ["7d", "30d", "90d"].includes(req.query.period)
-    ? req.query.period
-    : "30d";
+  const period = ["7d", "30d", "90d"].includes(req.query.period) ? req.query.period : "30d";
   const days = Number.parseInt(period, 10);
   const now = new Date();
   const currentStart = new Date(now);
@@ -322,9 +428,7 @@ export const analytics = async (req, res) => {
         { channel: "Social commerce", orders: 0, revenue: 0 },
         { channel: "Direct", orders: 0, revenue: 0 },
       ],
-      topProducts: [...products.values()]
-        .sort((a, b) => b.quantity - a.quantity)
-        .slice(0, 10),
+      topProducts: [...products.values()].sort((a, b) => b.quantity - a.quantity).slice(0, 10),
     };
   };
 
@@ -333,20 +437,33 @@ export const analytics = async (req, res) => {
     loadPeriod(previousStart, currentStart),
   ]);
   const changePercent = (value, previousValue) =>
-    previousValue ? Number((((value - previousValue) / previousValue) * 100).toFixed(1)) : value ? 100 : 0;
+    previousValue
+      ? Number((((value - previousValue) / previousValue) * 100).toFixed(1))
+      : value
+        ? 100
+        : 0;
 
   return ok(
     res,
     {
       period,
       metrics: {
-        totalSales: { value: current.revenue, changePercent: changePercent(current.revenue, previous.revenue) },
-        orders: { value: current.orders, changePercent: changePercent(current.orders, previous.orders) },
+        totalSales: {
+          value: current.revenue,
+          changePercent: changePercent(current.revenue, previous.revenue),
+        },
+        orders: {
+          value: current.orders,
+          changePercent: changePercent(current.orders, previous.orders),
+        },
         averageOrderValue: {
           value: current.averageOrderValue,
           changePercent: changePercent(current.averageOrderValue, previous.averageOrderValue),
         },
-        itemsSold: { value: current.itemsSold, changePercent: changePercent(current.itemsSold, previous.itemsSold) },
+        itemsSold: {
+          value: current.itemsSold,
+          changePercent: changePercent(current.itemsSold, previous.itemsSold),
+        },
       },
       salesOverTime: current.salesOverTime,
       salesByChannel: current.salesByChannel,
@@ -359,20 +476,31 @@ export const analytics = async (req, res) => {
   );
 };
 
-export const marketing = async (_q, res) =>
-  ok(
+export const marketing = async (_q, res) => {
+  const [subscribers, totalCampaigns, groupedCampaigns] = await Promise.all([
+    User.count({
+      where: {
+        role: "user",
+        status: "active",
+        isVerified: true,
+        marketingEmailSubscribed: true,
+        email: { [Op.ne]: null },
+      },
+    }),
+    Campaign.count(),
+    Campaign.count({ attributes: ["status"], group: ["status"] }),
+  ]);
+  const campaignStatuses = Object.fromEntries(
+    groupedCampaigns.map((group) => [group.status, Number(group.count)]),
+  );
+  return ok(
     res,
-    {
-      subscribers: await User.count({
-        where: { role: "user", status: "active" },
-      }),
-      revenue: Number(
-        (await Order.sum("total", { where: { paymentStatus: "Paid" } })) || 0,
-      ),
-      campaigns: await Campaign.count(),
-    },
+    { subscribers, campaigns: totalCampaigns, totalCampaigns, campaignStatuses },
     "Marketing loaded.",
   );
+};
+
+export { marketingSubscribers } from "./marketingController.js";
 
 export const campaignList = async (req, res) => {
   req.params.resource = "campaigns";
@@ -381,5 +509,6 @@ export const campaignList = async (req, res) => {
 
 export const exportData = async (req, res) => {
   req.params.resource = req.params.resource || "products";
+  if (req.params.resource === "products") return adminCatalog.listProducts(req, res);
   return adminList(req, res);
 };

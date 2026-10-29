@@ -5,4 +5,6 @@ import * as addresses from "../controllers/addressController.js";
 const router = Router();
 router.get("/", authenticate, asyncHandler(addresses.addresses));
 router.post("/", authenticate, asyncHandler(addresses.addressAdd));
+router.put("/:id", authenticate, asyncHandler(addresses.addressUpdate));
+router.delete("/:id", authenticate, asyncHandler(addresses.addressDelete));
 export default router;

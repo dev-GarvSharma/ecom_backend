@@ -9,18 +9,12 @@ export const uploadImages = multer({
   storage: multer.diskStorage({
     destination: dir,
     filename: (_r, f, cb) =>
-      cb(
-        null,
-        crypto.randomUUID() + path.extname(f.originalname).toLowerCase(),
-      ),
+      cb(null, crypto.randomUUID() + path.extname(f.originalname).toLowerCase()),
   }),
   limits: {
     fileSize: Number(process.env.MAX_UPLOAD_MB || 15) * 1048576,
     files: 8,
   },
   fileFilter: (_r, f, cb) =>
-    cb(
-      types.has(f.mimetype) ? null : new Error("Unsupported image type."),
-      types.has(f.mimetype),
-    ),
+    cb(types.has(f.mimetype) ? null : new Error("Unsupported image type."), types.has(f.mimetype)),
 });

@@ -19,10 +19,9 @@ const request = async (endpoint, options = {}) => {
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok)
-    throw Object.assign(
-      new Error(result.error?.description || "Razorpay request failed."),
-      { status: 502 },
-    );
+    throw Object.assign(new Error(result.error?.description || "Razorpay request failed."), {
+      status: 502,
+    });
   return result;
 };
 

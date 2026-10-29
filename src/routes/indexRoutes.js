@@ -6,16 +6,25 @@ import orderRoutes from "./orderRoutes.js";
 import addressRoutes from "./addressRoutes.js";
 import couponRoutes from "./couponRoutes.js";
 import notificationRoutes from "./notificationRoutes.js";
+import { authenticate } from "../middleware/security.js";
+import { asyncHandler } from "../utils/http.js";
+import { record } from "../controllers/interactionController.js";
 import adminRoutes from "./adminRoutes.js";
+import { unsubscribe, unsubscribePage } from "../controllers/marketingController.js";
 
 const router = Router();
 router.get("/health", (_req, res) => res.json({ ok: true }));
 router.use("/auth", authRoutes);
+// Keep the documented catalog namespace while preserving the legacy root paths.
+router.use("/catalog", catalogRoutes);
 router.use("/", catalogRoutes);
 router.use("/cart", cartRoutes);
 router.use("/orders", orderRoutes);
 router.use("/addresses", addressRoutes);
 router.use("/coupons", couponRoutes);
 router.use("/notifications", notificationRoutes);
+router.post("/interactions", authenticate, asyncHandler(record));
+router.get("/marketing/unsubscribe", unsubscribePage);
+router.post("/marketing/unsubscribe", asyncHandler(unsubscribe));
 router.use("/admin", adminRoutes);
 export default router;

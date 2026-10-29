@@ -1,8 +1,21 @@
 import { Op } from "sequelize";
-import { sequelize, User, Category, Product, Cart, CartItem, Order, OrderItem, Coupon, Notification, Address, Campaign, Setting } from "../database/models/index.js";
+import {
+  sequelize,
+  User,
+  Category,
+  Product,
+  Cart,
+  CartItem,
+  Order,
+  OrderItem,
+  Coupon,
+  Notification,
+  Address,
+  Campaign,
+  Setting,
+} from "../database/models/index.js";
 import { ok, fail } from "../utils/http.js";
 import { clearCache } from "../middleware/cache.js";
-
 
 export const validateCoupon = async (req, res) => {
   const c = await Coupon.findOne({

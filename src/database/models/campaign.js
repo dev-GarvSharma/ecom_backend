@@ -12,14 +12,15 @@ const Campaign = sequelize.define(
       primaryKey: true,
     },
     name: { type: DataTypes.STRING, allowNull: false },
-    channel: { type: DataTypes.STRING, defaultValue: "Email campaign" },
+    subject: { type: DataTypes.STRING(200), allowNull: true },
+    channel: { type: DataTypes.STRING, defaultValue: "email" },
     audience: DataTypes.STRING,
     status: {
-      type: DataTypes.ENUM("Draft", "Scheduled", "Active", "Sent", "Paused"),
+      type: DataTypes.ENUM("Draft", "Scheduled", "Active", "Sending", "Sent", "Paused", "Failed"),
       defaultValue: "Draft",
     },
     scheduledAt: DataTypes.DATE,
-    content: DataTypes.TEXT,
+    content: DataTypes.TEXT("long"),
   },
   { ...b, tableName: "campaigns" },
 );

@@ -14,7 +14,7 @@ const Category = sequelize.define(
     name: { type: DataTypes.STRING(120), allowNull: false },
     slug: { type: DataTypes.STRING(150), unique: true },
     description: DataTypes.TEXT,
-    image: { type: DataTypes.STRING, allowNull: true },
+    image: { type: DataTypes.STRING(1024), allowNull: true },
     priority: { type: DataTypes.INTEGER, defaultValue: 0 },
     showOnHomePage: { type: DataTypes.BOOLEAN, defaultValue: false },
     active: { type: DataTypes.BOOLEAN, defaultValue: true },

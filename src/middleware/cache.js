@@ -26,10 +26,7 @@ export const cachePublic =
             if (res.statusCode === 200 && typeof body === "string")
               redis?.set(key, body, "EX", seconds).catch(() => {});
             res
-              .set(
-                "Cache-Control",
-                `public, max-age=${seconds}, stale-while-revalidate=30`,
-              )
+              .set("Cache-Control", `public, max-age=${seconds}, stale-while-revalidate=30`)
               .set("X-Cache", "MISS");
             return send(body);
           };

@@ -1,13 +1,32 @@
-import { sequelize, Product, Cart, CartItem, Order, OrderItem, Coupon, Notification } from "../database/models/index.js";
+import {
+  sequelize,
+  Product,
+  ProductVariant,
+  Cart,
+  CartItem,
+  Order,
+  OrderItem,
+  Coupon,
+  Notification,
+  CartSession,
+  UserInteractionEvent,
+  Promotion,
+} from "../database/models/index.js";
 import { ok, fail } from "../utils/http.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { createRazorpayOrder, fetchRazorpayPayment, getRazorpayKeyId } from "../services/razorpay.js";
+import {
+  createRazorpayOrder,
+  fetchRazorpayPayment,
+  getRazorpayKeyId,
+} from "../services/razorpay.js";
 
 export const checkout = async (req, res) => {
   const { address, paymentMode, paymentMethod, couponCode } = req.body;
-  const method = String(paymentMode || paymentMethod || "COD").toUpperCase();
-  if (!["COD", "UPI", "CARD"].includes(method))
-    return fail(res, 400, "Payment mode must be COD, UPI, or CARD.");
+  const method = String(paymentMode || paymentMethod || "UPI").toUpperCase();
+  const availableMethods =
+    process.env.ENABLE_COD === "true" ? ["COD", "UPI", "CARD"] : ["UPI", "CARD"];
+  if (!availableMethods.includes(method))
+    return fail(res, 400, `Payment mode must be ${availableMethods.join(" or ")}.`);
   if (
     !address?.recipient ||
     !address?.line1 ||
@@ -16,6 +35,23 @@ export const checkout = async (req, res) => {
     !address?.phone
   )
     return fail(res, 400, "Complete shipping address required.");
+  const [checkoutCart] = await Cart.findOrCreate({ where: { userId: req.user.id } });
+  const [checkoutSession] = await CartSession.findOrCreate({
+    where: { cartId: checkoutCart.id },
+    defaults: { lastActivityAt: new Date() },
+  });
+  await checkoutSession.update({
+    checkoutStartedAt: new Date(),
+    lastActivityAt: new Date(),
+    status: "active",
+    abandonedAt: null,
+  });
+  await UserInteractionEvent.create({
+    userId: req.user.id,
+    cartId: checkoutCart.id,
+    eventType: "checkout.started",
+    details: { paymentMode: method },
+  });
   const result = await sequelize.transaction(async (t) => {
     const [c] = await Cart.findOrCreate({
       where: { userId: req.user.id },
@@ -23,20 +59,51 @@ export const checkout = async (req, res) => {
     });
     const items = await CartItem.findAll({
       where: { cartId: c.id },
-      include: [{ model: Product, as: "product" }],
+      include: [
+        { model: ProductVariant, as: "variant", include: [{ model: Product, as: "product" }] },
+      ],
       transaction: t,
       lock: t.LOCK.UPDATE,
     });
-    if (!items.length)
-      throw Object.assign(new Error("Cart is empty."), { status: 400 });
+    if (!items.length) throw Object.assign(new Error("Cart is empty."), { status: 400 });
     let subtotal = 0;
     for (const i of items) {
-      if (!i.product || i.product.stock < i.quantity)
+      if (
+        !i.variant?.active ||
+        !i.variant.product ||
+        i.variant.product.status !== "active" ||
+        !i.variant.product.showOnShop ||
+        i.variant.stock < i.quantity
+      )
         throw Object.assign(
-          new Error("Insufficient stock for " + (i.product?.name || "item")),
+          new Error("Insufficient stock for " + (i.variant?.product?.name || "item")),
           { status: 409 },
         );
-      subtotal += Number(i.product.price) * i.quantity;
+      if (!i.isPromotional) subtotal += Number(i.variant.price) * i.quantity;
+    }
+    const promotions = new Map();
+    for (const i of items.filter((item) => item.isPromotional)) {
+      const promotion = i.promotionId
+        ? await Promotion.findByPk(i.promotionId, { transaction: t, lock: t.LOCK.UPDATE })
+        : null;
+      if (
+        !promotion ||
+        !promotion.active ||
+        promotion.type !== "free_product" ||
+        promotion.promotionalVariantId !== i.variant.id ||
+        subtotal < Number(promotion.minimumSubtotal) ||
+        (promotion.usageLimit && promotion.usedCount >= promotion.usageLimit) ||
+        (promotion.startsAt && promotion.startsAt > new Date()) ||
+        (promotion.endsAt && promotion.endsAt < new Date())
+      )
+        throw Object.assign(new Error("Promotional product no longer qualifies for this cart."), {
+          status: 409,
+        });
+      promotions.set(promotion.id, promotion);
+    }
+    for (const promotion of promotions.values()) {
+      promotion.usedCount += 1;
+      await promotion.save({ transaction: t });
     }
     let discount = 0,
       coupon = null;
@@ -59,8 +126,7 @@ export const checkout = async (req, res) => {
         coupon.type === "percentage"
           ? (subtotal * Number(coupon.value)) / 100
           : Number(coupon.value);
-      if (coupon.maxDiscount)
-        discount = Math.min(discount, Number(coupon.maxDiscount));
+      if (coupon.maxDiscount) discount = Math.min(discount, Number(coupon.maxDiscount));
       discount = Math.min(discount, subtotal);
       coupon.usedCount++;
       await coupon.save({ transaction: t });
@@ -72,6 +138,7 @@ export const checkout = async (req, res) => {
         userId: req.user.id,
         status: "Pending",
         paymentMethod: method,
+        paymentProvider: method === "COD" ? null : "razorpay",
         currency: "INR",
         subtotal,
         discount,
@@ -104,18 +171,46 @@ export const checkout = async (req, res) => {
       await OrderItem.create(
         {
           orderId: order.id,
-          productId: i.product.id,
-          name: i.product.name,
-          sku: i.product.sku,
+          productId: i.variant.product.id,
+          variantId: i.variant.id,
+          name: i.variant.product.name,
+          sku: i.variant.sku,
+          variantOptions: i.variant.options,
+          productSnapshot: {
+            id: i.variant.product.id,
+            slug: i.variant.product.slug,
+            description: i.variant.product.description,
+          },
+          variantSnapshot: { id: i.variant.id, sku: i.variant.sku, options: i.variant.options },
           quantity: i.quantity,
-          unitPrice: i.product.price,
+          unitPrice: i.isPromotional ? 0 : i.variant.price,
         },
         { transaction: t },
       );
-      i.product.stock -= i.quantity;
-      await i.product.save({ transaction: t });
+      i.variant.stock -= i.quantity;
+      await i.variant.save({ transaction: t });
     }
     await CartItem.destroy({ where: { cartId: c.id }, transaction: t });
+    const cartSession = await CartSession.findOne({
+      where: { cartId: c.id },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (cartSession)
+      await cartSession.update(
+        { status: "converted", convertedOrderId: order.id, lastActivityAt: new Date() },
+        { transaction: t },
+      );
+    await UserInteractionEvent.create(
+      {
+        userId: req.user.id,
+        orderId: order.id,
+        cartId: c.id,
+        eventType: "order.placed",
+        details: { paymentMethod: method, itemCount: items.length },
+      },
+      { transaction: t },
+    );
     await Notification.create(
       {
         userId: req.user.id,
@@ -131,7 +226,11 @@ export const checkout = async (req, res) => {
 };
 
 export const verifyPayment = async (req, res) => {
-  const { razorpay_order_id: razorpayOrderId, razorpay_payment_id: paymentId, razorpay_signature: signature } = req.body;
+  const {
+    razorpay_order_id: razorpayOrderId,
+    razorpay_payment_id: paymentId,
+    razorpay_signature: signature,
+  } = req.body;
   const order = await Order.findOne({ where: { id: req.params.id, userId: req.user.id } });
   if (!order) return fail(res, 404, "Order not found.");
   if (order.paymentStatus === "Paid") return ok(res, order, "Payment already verified.");
@@ -161,8 +260,7 @@ export const verifyPayment = async (req, res) => {
     return fail(res, 400, "Payment does not match the order amount.");
 
   order.paymentId = paymentId;
-  if (["upi", "card"].includes(payment.method))
-    order.paymentMethod = payment.method.toUpperCase();
+  if (["upi", "card"].includes(payment.method)) order.paymentMethod = payment.method.toUpperCase();
   if (payment.status === "captured") {
     order.paymentStatus = "Paid";
     if (order.status === "Pending") order.status = "Processing";

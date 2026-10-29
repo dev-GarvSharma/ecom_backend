@@ -12,8 +12,7 @@ const validSignature = (body, signature, secret) => {
 export const razorpayWebhook = async (req, res) => {
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
   if (!secret) return fail(res, 503, "Razorpay webhook is not configured.");
-  if (!Buffer.isBuffer(req.body))
-    return fail(res, 400, "Raw webhook body is required.");
+  if (!Buffer.isBuffer(req.body)) return fail(res, 400, "Raw webhook body is required.");
   if (!validSignature(req.body, req.get("x-razorpay-signature"), secret))
     return fail(res, 400, "Invalid Razorpay webhook signature.");
 

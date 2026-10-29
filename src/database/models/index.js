@@ -11,7 +11,40 @@ import Campaign from "./campaign.js";
 import Setting from "./setting.js";
 import Address from "./address.js";
 import ProductImage from "./productImage.js";
+import ProductVariant from "./productVariant.js";
+import Role from "./role.js";
+import Permission from "./permission.js";
+import Promotion from "./promotion.js";
+import CartSession from "./cartSession.js";
+import UserInteractionEvent from "./userInteractionEvent.js";
+import AuditLog from "./auditLog.js";
+import VerificationChallenge from "./verificationChallenge.js";
+import CampaignDelivery from "./campaignDelivery.js";
 import "./associations.js";
 import sequelize from "../../config/database.js";
 
-export { User, Category, Product, ProductImage, Cart, CartItem, Order, OrderItem, Coupon, Notification, Campaign, Setting, Address, sequelize };
+export {
+  User,
+  Category,
+  Product,
+  ProductImage,
+  ProductVariant,
+  Cart,
+  CartItem,
+  Order,
+  OrderItem,
+  Coupon,
+  Notification,
+  Campaign,
+  Setting,
+  Address,
+  Role,
+  Permission,
+  Promotion,
+  CartSession,
+  UserInteractionEvent,
+  AuditLog,
+  VerificationChallenge,
+  CampaignDelivery,
+  sequelize,
+};

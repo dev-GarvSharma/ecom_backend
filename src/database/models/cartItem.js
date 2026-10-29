@@ -12,13 +12,15 @@ const CartItem = sequelize.define(
       primaryKey: true,
     },
     cartId: { type: DataTypes.UUID, allowNull: false },
-    productId: { type: DataTypes.UUID, allowNull: false },
+    variantId: { type: DataTypes.UUID, allowNull: false },
+    promotionId: DataTypes.UUID,
+    isPromotional: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
     quantity: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
   },
   {
     ...b,
     tableName: "cart_items",
-    indexes: [{ unique: true, fields: ["cart_id", "product_id"] }],
+    indexes: [{ unique: true, fields: ["cart_id", "variant_id"] }],
   },
 );
 
