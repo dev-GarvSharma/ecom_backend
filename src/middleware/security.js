@@ -56,7 +56,11 @@ export const authorizeAdminRoute = async (req, res, next) => {
   else if (/\/permissions/.test(path)) permission = "admin.roles.manage";
   else if (/\/settings/.test(path)) permission = "settings.manage";
   else if (/\/audit/.test(path)) permission = "audit.read";
-  else if (/\/abandoned-carts/.test(path)) permission = "customers.read";
+  else if (/\/abandoned-carts/.test(path))
+    permission = req.method === "GET" ? "customers.read" : "customers.write";
+  else if (/\/contact-messages/.test(path))
+    permission = req.method === "GET" ? "customers.read" : "customers.write";
+  else if (/\/blogs|\/blog-comments/.test(path)) permission = "marketing.manage";
   else if (/\/customers\/[^/]+\/orders/.test(path)) permission = "customers.read";
   else if (/\/notifications/.test(path)) permission = "admin.users.manage";
   else if (/\/marketing/.test(path)) permission = "marketing.manage";

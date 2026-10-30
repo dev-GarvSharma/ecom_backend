@@ -45,6 +45,7 @@ export const checkout = async (req, res) => {
     lastActivityAt: new Date(),
     status: "active",
     abandonedAt: null,
+    recoverySentAt: null,
   });
   await UserInteractionEvent.create({
     userId: req.user.id,

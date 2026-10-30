@@ -9,6 +9,7 @@ export default sequelize.define(
     lastActivityAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
     checkoutStartedAt: DataTypes.DATE,
     abandonedAt: DataTypes.DATE,
+    recoverySentAt: DataTypes.DATE,
     abandonmentReason: DataTypes.STRING(80),
     abandonmentComment: DataTypes.STRING(500),
     convertedOrderId: DataTypes.UUID,

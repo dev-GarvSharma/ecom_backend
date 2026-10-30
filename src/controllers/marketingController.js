@@ -30,12 +30,12 @@ const plainText = (html) => html
   .replace(/[ \t]+/g, " ")
   .replace(/\n\s*\n+/g, "\n\n")
   .trim();
-const signedUnsubscribeToken = (userId) => jwt.sign(
+export const signedUnsubscribeToken = (userId) => jwt.sign(
   { sub: userId, scope: "marketing-email-unsubscribe" },
   process.env.JWT_ACCESS_SECRET,
   { algorithm: "HS256", expiresIn: "2y", issuer: "ecom-api", audience: "ecom-marketing" },
 );
-const campaignUnsubscribeUrl = (req, token) => {
+export const campaignUnsubscribeUrl = (req, token) => {
   let base = process.env.API_PUBLIC_URL;
   if (!base && process.env.NODE_ENV !== "production") base = `${req.protocol}://${req.get("host")}`;
   if (!base) throw Object.assign(new Error("Set API_PUBLIC_URL to enable campaign unsubscribe links."), { status: 503 });

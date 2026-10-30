@@ -20,6 +20,9 @@ import UserInteractionEvent from "./userInteractionEvent.js";
 import AuditLog from "./auditLog.js";
 import VerificationChallenge from "./verificationChallenge.js";
 import CampaignDelivery from "./campaignDelivery.js";
+import ContactMessage from "./contactMessage.js";
+import BlogPost from "./blogPost.js";
+import BlogComment from "./blogComment.js";
 import "./associations.js";
 import sequelize from "../../config/database.js";
 
@@ -46,5 +49,8 @@ export {
   AuditLog,
   VerificationChallenge,
   CampaignDelivery,
+  ContactMessage,
+  BlogPost,
+  BlogComment,
   sequelize,
 };

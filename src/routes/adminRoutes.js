@@ -8,6 +8,20 @@ import * as dashboard from "../controllers/adminDashboardController.js";
 import * as notifications from "../controllers/notificationController.js";
 import { sendCampaign, marketingSubscribers } from "../controllers/marketingController.js";
 import {
+  adminContactMessages,
+  updateContactMessage,
+  sendAbandonedCartRecovery,
+} from "../controllers/contactController.js";
+import {
+  adminBlogList,
+  adminBlogDetail,
+  createBlogPost,
+  updateBlogPost,
+  deleteBlogPost,
+  adminCommentList,
+  moderateBlogComment,
+} from "../controllers/blogController.js";
+import {
   adminRoles,
   adminPermissions,
   adminRoleCreate,
@@ -31,6 +45,16 @@ router.get("/users", asyncHandler(adminUsers));
 router.get("/users/:userId/permissions", asyncHandler(adminUserPermissions));
 router.put("/users/:userId/permissions", asyncHandler(adminUserPermissions));
 router.get("/abandoned-carts", asyncHandler(adminAbandonedCarts));
+router.post("/abandoned-carts/:id/recover", asyncHandler(sendAbandonedCartRecovery));
+router.get("/contact-messages", asyncHandler(adminContactMessages));
+router.patch("/contact-messages/:id", asyncHandler(updateContactMessage));
+router.get("/blogs", asyncHandler(adminBlogList));
+router.get("/blogs/:id", asyncHandler(adminBlogDetail));
+router.post("/blogs", uploadImages.single("bannerImage"), asyncHandler(createBlogPost));
+router.put("/blogs/:id", uploadImages.single("bannerImage"), asyncHandler(updateBlogPost));
+router.delete("/blogs/:id", asyncHandler(deleteBlogPost));
+router.get("/blog-comments", asyncHandler(adminCommentList));
+router.patch("/blog-comments/:id", asyncHandler(moderateBlogComment));
 router.get("/audit-log", asyncHandler(adminAuditLog));
 router.post("/customers", asyncHandler(adminCreateCustomer));
 router.get("/dashboard", asyncHandler(dashboard.dashboard));

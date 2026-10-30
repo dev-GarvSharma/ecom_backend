@@ -16,6 +16,8 @@ import Role from "./role.js";
 import Permission from "./permission.js";
 import Promotion from "./promotion.js";
 import CartSession from "./cartSession.js";
+import BlogPost from "./blogPost.js";
+import BlogComment from "./blogComment.js";
 import UserInteractionEvent from "./userInteractionEvent.js";
 import AuditLog from "./auditLog.js";
 import CampaignDelivery from "./campaignDelivery.js";
@@ -103,3 +105,5 @@ User.hasMany(CampaignDelivery, { foreignKey: "userId", as: "campaignDeliveries" 
 CampaignDelivery.belongsTo(User, { foreignKey: "userId", as: "recipient" });
 CartItem.belongsTo(Promotion, { foreignKey: "promotionId", as: "promotion" });
 Promotion.hasMany(CartItem, { foreignKey: "promotionId", as: "cartItems" });
+BlogPost.hasMany(BlogComment, { foreignKey: "blogPostId", as: "comments", onDelete: "CASCADE" });
+BlogComment.belongsTo(BlogPost, { foreignKey: "blogPostId", as: "post" });

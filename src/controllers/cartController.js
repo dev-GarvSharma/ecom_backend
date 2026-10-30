@@ -18,7 +18,7 @@ export const cartGet = async (req, res) => {
     where: { cartId: c.id },
     defaults: { lastActivityAt: new Date() },
   });
-  await session.update({ lastActivityAt: new Date(), status: "active", abandonedAt: null });
+  await session.update({ lastActivityAt: new Date(), status: "active", abandonedAt: null, recoverySentAt: null });
   return ok(
     res,
     await CartItem.findAll({
@@ -84,7 +84,7 @@ export const applyPromotion = async (req, res) => {
     where: { cartId: cart.id },
     defaults: { lastActivityAt: new Date() },
   });
-  await session.update({ lastActivityAt: new Date(), status: "active", abandonedAt: null });
+  await session.update({ lastActivityAt: new Date(), status: "active", abandonedAt: null, recoverySentAt: null });
   await UserInteractionEvent.create({
     userId: req.user.id,
     cartId: cart.id,
@@ -119,7 +119,7 @@ export const cartAdd = async (req, res) => {
     where: { cartId: c.id },
     defaults: { lastActivityAt: new Date() },
   }).then(([session]) =>
-    session.update({ lastActivityAt: new Date(), status: "active", abandonedAt: null }),
+    session.update({ lastActivityAt: new Date(), status: "active", abandonedAt: null, recoverySentAt: null }),
   );
   await UserInteractionEvent.create({
     userId: req.user.id,
@@ -186,7 +186,7 @@ export const cartSync = async (req, res) => {
         transaction,
       });
       await session.update(
-        { lastActivityAt: new Date(), status: "active", abandonedAt: null },
+        { lastActivityAt: new Date(), status: "active", abandonedAt: null, recoverySentAt: null },
         { transaction },
       );
       await UserInteractionEvent.create(
@@ -229,6 +229,7 @@ export const cartAbandon = async (req, res) => {
     abandonmentReason: reason,
     abandonmentComment: comment || null,
     lastActivityAt: new Date(),
+    recoverySentAt: null,
   });
   await UserInteractionEvent.create({
     userId: req.user.id,
@@ -251,7 +252,7 @@ export const cartUpdate = async (req, res) => {
   if (q === 0) {
     await i.destroy();
     await CartSession.update(
-      { lastActivityAt: new Date(), status: "active", abandonedAt: null },
+      { lastActivityAt: new Date(), status: "active", abandonedAt: null, recoverySentAt: null },
       { where: { cartId: i.cartId } },
     );
     await UserInteractionEvent.create({
@@ -269,7 +270,7 @@ export const cartUpdate = async (req, res) => {
   i.quantity = q;
   await i.save();
   await CartSession.update(
-    { lastActivityAt: new Date(), status: "active", abandonedAt: null },
+    { lastActivityAt: new Date(), status: "active", abandonedAt: null, recoverySentAt: null },
     { where: { cartId: i.cartId } },
   );
   await UserInteractionEvent.create({
@@ -288,7 +289,7 @@ export const cartRemove = async (req, res) => {
   if (!i) return fail(res, 404, "Cart item not found.");
   await i.destroy();
   await CartSession.update(
-    { lastActivityAt: new Date(), status: "active", abandonedAt: null },
+    { lastActivityAt: new Date(), status: "active", abandonedAt: null, recoverySentAt: null },
     { where: { cartId: i.cartId } },
   );
   await UserInteractionEvent.create({
