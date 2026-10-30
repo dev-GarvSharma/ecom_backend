@@ -13,7 +13,7 @@ export const seedUsers = async () => {
     roleId: adminRole.id,
     isVerified: true,
     status: "active",
-    phone: "+919900000000",
+    phone: "+919012803123",
     location: "Mumbai",
   });
   await admin.addRole(adminRole);
