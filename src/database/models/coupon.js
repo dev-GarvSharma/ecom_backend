@@ -17,6 +17,7 @@ const Coupon = sequelize.define(
     minOrder: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
     maxDiscount: DataTypes.DECIMAL(12, 2),
     usageLimit: DataTypes.INTEGER,
+    perUserLimit: DataTypes.INTEGER,
     usedCount: { type: DataTypes.INTEGER, defaultValue: 0 },
     startsAt: DataTypes.DATE,
     expiresAt: DataTypes.DATE,

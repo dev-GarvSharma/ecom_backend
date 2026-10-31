@@ -204,6 +204,28 @@ export const adminCreate = async (req, res) => {
     return fail(res, 400, "Cannot create this resource.");
   try {
     let values = clean(req.body);
+    if (resource === "coupons") {
+      values.code = String(values.code || "").trim().toUpperCase();
+      values.startsAt = values.startsAt || null;
+      values.expiresAt = values.expiresAt || null;
+      for (const key of ["startsAt", "expiresAt"]) {
+        if (values[key] !== null) {
+          const date = new Date(values[key]);
+          if (Number.isNaN(date.getTime())) return fail(res, 400, `Coupon ${key} date is invalid.`);
+          values[key] = date;
+        }
+      }
+      if (values.startsAt && values.expiresAt && values.startsAt >= values.expiresAt)
+        return fail(res, 400, "Coupon end date must be after its start date.");
+      for (const key of ["usageLimit", "perUserLimit"]) {
+        if (values[key] === "" || values[key] === null) values[key] = null;
+        else if (values[key] !== undefined) {
+          values[key] = Number(values[key]);
+          if (!Number.isInteger(values[key]) || values[key] < 1)
+            return fail(res, 400, `Coupon ${key} must be a positive whole number.`);
+        }
+      }
+    }
     if (resource === "promotions") {
       values.code = String(values.code || "")
         .trim()
@@ -297,6 +319,35 @@ export const adminUpdate = async (req, res) => {
       : await M.findByPk(req.params.id);
   if (!row) return fail(res, 404, "Record not found.");
   let values = clean(req.body);
+  if (resource === "coupons") {
+    const allowed = new Set([
+      "code", "type", "value", "minOrder", "maxDiscount", "usageLimit", "perUserLimit",
+      "startsAt", "expiresAt", "active",
+    ]);
+    if (Object.keys(values).some((key) => !allowed.has(key)))
+      return fail(res, 400, "Coupon updates contain unsupported fields.");
+    if (values.code !== undefined) values.code = String(values.code).trim().toUpperCase();
+    for (const key of ["startsAt", "expiresAt"]) {
+      if (values[key] === "" || values[key] === null) values[key] = null;
+      else if (values[key] !== undefined) {
+        const date = new Date(values[key]);
+        if (Number.isNaN(date.getTime())) return fail(res, 400, `Coupon ${key} date is invalid.`);
+        values[key] = date;
+      }
+    }
+    const startsAt = values.startsAt === undefined ? row.startsAt : values.startsAt;
+    const expiresAt = values.expiresAt === undefined ? row.expiresAt : values.expiresAt;
+    if (startsAt && expiresAt && new Date(startsAt) >= new Date(expiresAt))
+      return fail(res, 400, "Coupon end date must be after its start date.");
+    for (const key of ["usageLimit", "perUserLimit"]) {
+      if (values[key] === "" || values[key] === null) values[key] = null;
+      else if (values[key] !== undefined) {
+        values[key] = Number(values[key]);
+        if (!Number.isInteger(values[key]) || values[key] < 1)
+          return fail(res, 400, `Coupon ${key} must be a positive whole number.`);
+      }
+    }
+  }
   if (resource === "campaigns") {
     if (["Sent", "Sending", "Failed"].includes(row.status))
       return fail(res, 409, "This campaign cannot be edited in its current status.");

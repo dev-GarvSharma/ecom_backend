@@ -123,6 +123,17 @@ export const checkout = async (req, res) => {
         (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit)
       )
         throw Object.assign(new Error("Coupon unavailable."), { status: 400 });
+      if (coupon.perUserLimit) {
+        const userCouponUses = await Order.count({
+          where: { userId: req.user.id, couponCode: coupon.code },
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+        if (userCouponUses >= coupon.perUserLimit)
+          throw Object.assign(new Error("You have reached the usage limit for this coupon."), {
+            status: 400,
+          });
+      }
       discount =
         coupon.type === "percentage"
           ? (subtotal * Number(coupon.value)) / 100

@@ -15,6 +15,7 @@ module.exports = {
       min_order: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
       max_discount: DataTypes.DECIMAL(12, 2),
       usage_limit: DataTypes.INTEGER,
+      per_user_limit: DataTypes.INTEGER,
       used_count: { type: DataTypes.INTEGER, defaultValue: 0 },
       starts_at: DataTypes.DATE,
       expires_at: DataTypes.DATE,
