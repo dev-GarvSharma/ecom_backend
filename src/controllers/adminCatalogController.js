@@ -39,11 +39,14 @@ const imagePaths = (req, body) => {
   const savedPaths = Array.isArray(existing)
     ? existing.map((image) => (typeof image === "string" ? image : image.path)).filter(Boolean)
     : [];
-  const uploaded = Object.values(req.files || {})
-    .flat()
+  const uploaded = (Array.isArray(req.files) ? req.files : Object.values(req.files || {}).flat())
+    .filter((file) => file.fieldname === "images")
     .map((file) => `/uploads/${file.filename}`);
   return [...new Set([...savedPaths, ...uploaded])];
 };
+
+const uploadedFiles = (req) =>
+  Array.isArray(req.files) ? req.files : Object.values(req.files || {}).flat();
 
 const associations = [
   { model: Category, as: "category" },
@@ -97,6 +100,8 @@ const saveProduct = async (req, res, existing = null) => {
     )
   )
     return fail(res, 400, "Each variant needs a SKU, valid price, and non-negative stock.");
+  if (variants.some((variant) => Array.isArray(variant.images) && variant.images.length > 5))
+    return fail(res, 400, "Each product variant supports up to five images.");
 
   const images = imagePaths(req, body);
   const showOnShop = parseBoolean(body.showOnShop, existing?.showOnShop ?? true);
@@ -125,6 +130,20 @@ const saveProduct = async (req, res, existing = null) => {
   };
   if (!productValues.name) return fail(res, 400, "Product name is required.");
 
+  const variantImageFiles = new Map();
+  const requestFiles = uploadedFiles(req);
+  const productImagesUploaded = requestFiles.some((file) => file.fieldname === "images");
+  for (const file of requestFiles) {
+    if (file.fieldname === "images") continue;
+    const match = /^variantImage_(\d+)_(\d+)$/.exec(file.fieldname);
+    if (!match || Number(match[2]) > 4)
+      return fail(res, 400, "Variant image fields are invalid. Each variant supports up to five images.");
+    const key = `${match[1]}:${match[2]}`;
+    if (variantImageFiles.has(key))
+      return fail(res, 400, "Only one image can be uploaded for each variant image position.");
+    variantImageFiles.set(key, `/uploads/${file.filename}`);
+  }
+
   try {
     const product = await sequelize.transaction(async (transaction) => {
       const row = existing
@@ -139,10 +158,23 @@ const saveProduct = async (req, res, existing = null) => {
       for (const variant of currentVariants) {
         if (!submittedIds.has(variant.id)) await variant.update({ active: false }, { transaction });
       }
-      for (const variant of variants) {
+      for (const [variantIndex, variant] of variants.entries()) {
+        const current = variant.id
+          ? currentVariants.find((item) => item.id === variant.id)
+          : null;
+        const formIndex = variant.formIndex !== undefined && variant.formIndex !== null && variant.formIndex !== "" && Number.isInteger(Number(variant.formIndex))
+          ? Number(variant.formIndex)
+          : variantIndex;
+        const submittedImages = Array.isArray(variant.images)
+          ? variant.images
+          : current?.images || [];
+        const variantImages = Array.from({ length: 5 }, (_, imageIndex) =>
+          variantImageFiles.get(`${formIndex}:${imageIndex}`) || submittedImages[imageIndex] || null,
+        ).filter(Boolean);
         const values = {
           sku: String(variant.sku).trim(),
           options: variant.options && typeof variant.options === "object" ? variant.options : {},
+          images: variantImages,
           price: Number(variant.price),
           compareAtPrice: variant.compareAtPrice === "" ? null : (variant.compareAtPrice ?? null),
           stock: Number(variant.stock || 0),
@@ -151,7 +183,6 @@ const saveProduct = async (req, res, existing = null) => {
         if (values.active === null)
           throw Object.assign(new Error("Variant active must be a boolean."), { status: 400 });
         if (variant.id) {
-          const current = currentVariants.find((item) => item.id === variant.id);
           if (!current)
             throw Object.assign(new Error("Variant does not belong to this product."), {
               status: 400,
@@ -161,7 +192,7 @@ const saveProduct = async (req, res, existing = null) => {
           await ProductVariant.create({ ...values, productId: row.id }, { transaction });
         }
       }
-      if (body.images !== undefined || Object.keys(req.files || {}).length > 0) {
+      if (body.images !== undefined || productImagesUploaded) {
         await ProductImage.destroy({ where: { productId: row.id }, transaction });
         if (images.length)
           await ProductImage.bulkCreate(
@@ -179,14 +210,15 @@ const saveProduct = async (req, res, existing = null) => {
             name: productValues.name,
             slug: productValues.slug,
             categoryId: productValues.categoryId,
-            variants: variants.map(({ id, sku, price, stock, active }) => ({
+            variants: variants.map(({ id, sku, price, stock, active, images }) => ({
               id: id || null,
               sku,
               price,
               stock: stock ?? 0,
               active: active !== false,
+              imageCount: Array.isArray(images) ? images.length : 0,
             })),
-            imagesChanged: body.images !== undefined || Object.keys(req.files || {}).length > 0,
+            imagesChanged: body.images !== undefined || productImagesUploaded,
           },
           ipAddress: req.ip,
         },

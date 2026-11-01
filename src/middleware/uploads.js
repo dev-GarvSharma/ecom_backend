@@ -13,7 +13,7 @@ export const uploadImages = multer({
   }),
   limits: {
     fileSize: Number(process.env.MAX_UPLOAD_MB || 15) * 1048576,
-    files: 8,
+    files: 64,
   },
   fileFilter: (_r, f, cb) =>
     cb(types.has(f.mimetype) ? null : new Error("Unsupported image type."), types.has(f.mimetype)),

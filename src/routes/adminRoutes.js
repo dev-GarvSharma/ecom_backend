@@ -165,7 +165,7 @@ for (const resource of ["categories", "orders", "customers", "coupons", "promoti
     asyncHandler(resources.adminDelete),
   );
 }
-const productImageUpload = uploadImages.fields([{ name: "images", maxCount: 8 }]);
+const productImageUpload = uploadImages.any();
 router.get("/products", asyncHandler(catalog.listProducts));
 router.get("/products/:id", asyncHandler(catalog.productDetail));
 router.post("/products", productImageUpload, asyncHandler(catalog.createProduct));

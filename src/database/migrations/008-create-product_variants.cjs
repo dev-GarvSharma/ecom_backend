@@ -17,6 +17,7 @@ module.exports = {
       },
       sku: { type: DataTypes.STRING(80), allowNull: false, unique: true },
       options: { type: DataTypes.JSON, allowNull: false, defaultValue: {} },
+      images: { type: DataTypes.JSON, allowNull: false, defaultValue: [] },
       price: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
       compare_at_price: DataTypes.DECIMAL(12, 2),
       stock: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },

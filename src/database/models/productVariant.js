@@ -12,6 +12,7 @@ const ProductVariant = sequelize.define(
     productId: { type: DataTypes.UUID, allowNull: false },
     sku: { type: DataTypes.STRING(80), unique: true, allowNull: false },
     options: { type: DataTypes.JSON, allowNull: false, defaultValue: {} },
+    images: { type: DataTypes.JSON, allowNull: false, defaultValue: [] },
     price: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
     compareAtPrice: { type: DataTypes.DECIMAL(12, 2), allowNull: true },
     stock: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
