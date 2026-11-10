@@ -169,3 +169,43 @@ export const createProductReview = async (req, res) => {
   });
   return ok(res, review, "Review submitted for approval.", null, 201);
 };
+
+export const productsListHomepage = async (req, res) => {
+  const row = await Product.findAll({
+    where: {
+      showOnShop: true,
+      status: "active",
+    },
+    include: [
+      { model: Category, as: "category", attributes: ["name", "slug"] },
+      { model: ProductImage, as: "images", attributes: ["id", "path"] },
+      {
+        model: ProductFeatureNote,
+        as: "featureNotes",
+        separate: true,
+        order: [["position", "ASC"]],
+        attributes: ["text", "image"],
+      },
+      {
+        model: ProductVariant,
+        as: "variants",
+        where: {
+          active: true,
+        },
+        attributes: ["price", "compareAtPrice", "stock"],
+      },
+    ],
+    attributes: [
+      "id",
+      "name",
+      "slug",
+      "brand",
+      "ratingAverage",
+      "reviewCount",
+      "sprays",
+      "labelText",
+    ],
+  });
+  if (!row) return fail(res, 404, "Products not found.");
+  return ok(res, row, "Products loaded.");
+};

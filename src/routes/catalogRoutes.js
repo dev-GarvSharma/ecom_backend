@@ -9,4 +9,5 @@ router.get("/products/:id", cachePublic(60), asyncHandler(catalog.product));
 router.get("/products/:id/reviews", asyncHandler(catalog.listProductReviews));
 router.post("/products/:id/reviews", authenticate, asyncHandler(catalog.createProductReview));
 router.get("/categories", cachePublic(300), asyncHandler(catalog.categories));
+router.get("/homepage/products", cachePublic(60), asyncHandler(catalog.productsListHomepage));
 export default router;
