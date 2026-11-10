@@ -12,6 +12,10 @@ import Setting from "./setting.js";
 import Address from "./address.js";
 import ProductImage from "./productImage.js";
 import ProductVariant from "./productVariant.js";
+import ProductReview from "./productReview.js";
+import ProductReelLink from "./productReelLink.js";
+import ProductFeatureNote from "./productFeatureNote.js";
+import ProductFaq from "./productFaq.js";
 import Role from "./role.js";
 import Permission from "./permission.js";
 import Promotion from "./promotion.js";
@@ -32,6 +36,10 @@ export {
   Product,
   ProductImage,
   ProductVariant,
+  ProductReview,
+  ProductReelLink,
+  ProductFeatureNote,
+  ProductFaq,
   Cart,
   CartItem,
   Order,

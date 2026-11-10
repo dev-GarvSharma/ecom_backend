@@ -23,6 +23,7 @@ const Order = sequelize.define(
     },
     paymentMethod: DataTypes.STRING,
     paymentProvider: DataTypes.STRING(40),
+    razorpayMode: { type: DataTypes.ENUM("live", "test"), allowNull: false, defaultValue: "live" },
     paymentDueAt: DataTypes.DATE,
     cancelReason: DataTypes.STRING(500),
     cancelledAt: DataTypes.DATE,

@@ -51,7 +51,9 @@ export const adminList = async (req, res) => {
   const { page, limit, offset } = paging(req);
   let where = resource === "customers" ? { role: "user" } : {};
   if (resource === "customers") {
-    const search = String(req.query.search || "").trim().slice(0, 100);
+    const search = String(req.query.search || "")
+      .trim()
+      .slice(0, 100);
     if (search)
       where = {
         ...where,
@@ -63,7 +65,9 @@ export const adminList = async (req, res) => {
       };
   }
   if (resource === "campaigns") {
-    const search = String(req.query.search || "").trim().slice(0, 100);
+    const search = String(req.query.search || "")
+      .trim()
+      .slice(0, 100);
     const status = String(req.query.status || "").trim();
     if (search) {
       where = {
@@ -78,6 +82,14 @@ export const adminList = async (req, res) => {
     }
     if (["Draft", "Scheduled", "Active", "Sending", "Sent", "Paused", "Failed"].includes(status))
       where.status = status;
+  }
+  if (resource === "orders") {
+    const mode = req.query.razorpayMode || req.query.mode;
+    if (["live", "test"].includes(mode)) where.razorpayMode = mode;
+    if (["Pending", "Processing", "Shipped", "Delivered", "Cancelled"].includes(req.query.status))
+      where.status = req.query.status;
+    if (["Pending", "Paid", "Failed", "Refunded"].includes(req.query.paymentStatus))
+      where.paymentStatus = req.query.paymentStatus;
   }
   const inc =
     resource === "orders"
@@ -150,6 +162,55 @@ export const adminList = async (req, res) => {
   });
 };
 
+export const adminTestOrders = (req, res) =>
+  adminList({ params: { resource: "orders" }, query: { ...req.query, mode: "test" } }, res);
+
+export const razorpayMode = async (_req, res) => {
+  const setting = await Setting.findByPk("razorpay_mode");
+  return ok(
+    res,
+    {
+      mode: setting?.value === "test" ? "test" : "live",
+      testConfigured: Boolean(
+        process.env.RAZORPAY_TEST_KEY_ID && process.env.RAZORPAY_TEST_KEY_SECRET,
+      ),
+      liveConfigured: Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
+    },
+    "Razorpay mode loaded.",
+  );
+};
+
+export const setRazorpayMode = async (req, res) => {
+  const mode = req.body.mode;
+  if (!["test", "live"].includes(mode)) return fail(res, 400, "Mode must be test or live.");
+  const configured =
+    mode === "test"
+      ? process.env.RAZORPAY_TEST_KEY_ID && process.env.RAZORPAY_TEST_KEY_SECRET
+      : process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET;
+  if (!configured)
+    return fail(
+      res,
+      503,
+      `${mode === "test" ? "Test" : "Live"} Razorpay credentials are not configured.`,
+    );
+  const [setting] = await Setting.findOrCreate({
+    where: { key: "razorpay_mode" },
+    defaults: { value: mode },
+  });
+  if (setting.value !== mode) await setting.update({ value: mode });
+  return ok(
+    res,
+    {
+      mode,
+      testConfigured: Boolean(
+        process.env.RAZORPAY_TEST_KEY_ID && process.env.RAZORPAY_TEST_KEY_SECRET,
+      ),
+      liveConfigured: Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
+    },
+    `Razorpay ${mode} mode enabled.`,
+  );
+};
+
 export const adminDetail = async (req, res) => {
   const resource = req.params.resource,
     M = map[resource];
@@ -192,7 +253,11 @@ export const adminDetail = async (req, res) => {
       CampaignDelivery.count({ where: { campaignId: row.id, status: "failed" } }),
       CampaignDelivery.count({ where: { campaignId: row.id, status: "skipped" } }),
     ]);
-    return ok(res, { ...row.toJSON(), deliverySummary: { accepted, failed, skipped } }, "Record loaded.");
+    return ok(
+      res,
+      { ...row.toJSON(), deliverySummary: { accepted, failed, skipped } },
+      "Record loaded.",
+    );
   }
   return ok(res, row, "Record loaded.");
 };
@@ -205,7 +270,9 @@ export const adminCreate = async (req, res) => {
   try {
     let values = clean(req.body);
     if (resource === "coupons") {
-      values.code = String(values.code || "").trim().toUpperCase();
+      values.code = String(values.code || "")
+        .trim()
+        .toUpperCase();
       values.startsAt = values.startsAt || null;
       values.expiresAt = values.expiresAt || null;
       for (const key of ["startsAt", "expiresAt"]) {
@@ -242,7 +309,9 @@ export const adminCreate = async (req, res) => {
     if (resource === "campaigns") {
       values.name = String(values.name || "").trim();
       values.subject = String(values.subject || values.name || "").trim();
-      values.channel = String(values.channel || "email").trim().toLowerCase();
+      values.channel = String(values.channel || "email")
+        .trim()
+        .toLowerCase();
       values.audience = String(values.audience || "").trim();
       values.status = String(values.status || "Draft");
       values.content = String(values.content || "");
@@ -255,7 +324,11 @@ export const adminCreate = async (req, res) => {
       if (!values.audience || values.audience.length > 120)
         return fail(res, 400, "Campaign audience is required and cannot exceed 120 characters.");
       if (!["Draft", "Scheduled", "Active", "Paused"].includes(values.status))
-        return fail(res, 400, "Campaign status is invalid. Sent campaigns can only be created by a delivery workflow.");
+        return fail(
+          res,
+          400,
+          "Campaign status is invalid. Sent campaigns can only be created by a delivery workflow.",
+        );
       if (values.content.length > 50000)
         return fail(res, 400, "Campaign content cannot exceed 50,000 characters.");
       if (values.scheduledAt) {
@@ -321,8 +394,16 @@ export const adminUpdate = async (req, res) => {
   let values = clean(req.body);
   if (resource === "coupons") {
     const allowed = new Set([
-      "code", "type", "value", "minOrder", "maxDiscount", "usageLimit", "perUserLimit",
-      "startsAt", "expiresAt", "active",
+      "code",
+      "type",
+      "value",
+      "minOrder",
+      "maxDiscount",
+      "usageLimit",
+      "perUserLimit",
+      "startsAt",
+      "expiresAt",
+      "active",
     ]);
     if (Object.keys(values).some((key) => !allowed.has(key)))
       return fail(res, 400, "Coupon updates contain unsupported fields.");
@@ -351,7 +432,15 @@ export const adminUpdate = async (req, res) => {
   if (resource === "campaigns") {
     if (["Sent", "Sending", "Failed"].includes(row.status))
       return fail(res, 409, "This campaign cannot be edited in its current status.");
-    const allowed = new Set(["name", "subject", "channel", "audience", "status", "scheduledAt", "content"]);
+    const allowed = new Set([
+      "name",
+      "subject",
+      "channel",
+      "audience",
+      "status",
+      "scheduledAt",
+      "content",
+    ]);
     if (Object.keys(values).some((key) => !allowed.has(key)))
       return fail(res, 400, "Campaign updates contain unsupported fields.");
     if (values.name !== undefined) {
@@ -379,9 +468,20 @@ export const adminUpdate = async (req, res) => {
       if (values.content.length > 50000)
         return fail(res, 400, "Campaign content cannot exceed 50,000 characters.");
     }
-    if (values.status !== undefined && !["Draft", "Scheduled", "Active", "Paused"].includes(values.status))
-      return fail(res, 400, "Campaign status is invalid. Sent campaigns can only be set by a delivery workflow.");
-    if (values.scheduledAt !== undefined && values.scheduledAt !== null && values.scheduledAt !== "") {
+    if (
+      values.status !== undefined &&
+      !["Draft", "Scheduled", "Active", "Paused"].includes(values.status)
+    )
+      return fail(
+        res,
+        400,
+        "Campaign status is invalid. Sent campaigns can only be set by a delivery workflow.",
+      );
+    if (
+      values.scheduledAt !== undefined &&
+      values.scheduledAt !== null &&
+      values.scheduledAt !== ""
+    ) {
       const scheduledAt = new Date(values.scheduledAt);
       if (Number.isNaN(scheduledAt.getTime()))
         return fail(res, 400, "Campaign schedule date is invalid.");
@@ -391,8 +491,13 @@ export const adminUpdate = async (req, res) => {
     }
     if (values.status === "Scheduled" && !(values.scheduledAt || row.scheduledAt))
       return fail(res, 400, "Choose a schedule date for a scheduled campaign.");
-    const effectiveSchedule = values.scheduledAt === undefined ? row.scheduledAt : values.scheduledAt;
-    if (values.status === "Scheduled" && effectiveSchedule && new Date(effectiveSchedule) <= new Date())
+    const effectiveSchedule =
+      values.scheduledAt === undefined ? row.scheduledAt : values.scheduledAt;
+    if (
+      values.status === "Scheduled" &&
+      effectiveSchedule &&
+      new Date(effectiveSchedule) <= new Date()
+    )
       return fail(res, 400, "Campaign schedule date must be in the future.");
     if (values.status && values.status !== "Scheduled" && values.scheduledAt === undefined)
       values.scheduledAt = null;

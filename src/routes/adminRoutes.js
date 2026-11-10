@@ -32,6 +32,8 @@ import {
   adminAbandonedCarts,
   adminCreateCustomer,
   adminAuditLog,
+  razorpayMode,
+  setRazorpayMode,
 } from "../controllers/adminResourceController.js";
 
 const router = Router();
@@ -58,6 +60,9 @@ router.patch("/blog-comments/:id", asyncHandler(moderateBlogComment));
 router.get("/audit-log", asyncHandler(adminAuditLog));
 router.post("/customers", asyncHandler(adminCreateCustomer));
 router.get("/dashboard", asyncHandler(dashboard.dashboard));
+router.get("/razorpay/mode", asyncHandler(razorpayMode));
+router.put("/razorpay/mode", asyncHandler(setRazorpayMode));
+router.get("/razorpay/test-orders", asyncHandler(resources.adminTestOrders));
 router.post("/dashboard/export", asyncHandler(dashboard.exportData));
 router.get("/analytics", asyncHandler(dashboard.analytics));
 router.post("/analytics/export", asyncHandler(dashboard.exportData));
@@ -96,10 +101,7 @@ router.delete(
   },
   asyncHandler(resources.adminDelete),
 );
-router.get(
-  "/marketing/subscribers",
-  asyncHandler(marketingSubscribers),
-);
+router.get("/marketing/subscribers", asyncHandler(marketingSubscribers));
 router.get("/notifications", asyncHandler(notifications.notificationsAdmin));
 router.patch("/notifications/read", asyncHandler(notifications.readAll));
 router.get("/settings", asyncHandler(dashboard.settings));
@@ -167,6 +169,9 @@ for (const resource of ["categories", "orders", "customers", "coupons", "promoti
 }
 const productImageUpload = uploadImages.any();
 router.get("/products", asyncHandler(catalog.listProducts));
+router.get("/product-reviews", asyncHandler(catalog.productReviews));
+router.post("/product-reviews", asyncHandler(catalog.createAdminProductReview));
+router.patch("/product-reviews/:id", asyncHandler(catalog.moderateProductReview));
 router.get("/products/:id", asyncHandler(catalog.productDetail));
 router.post("/products", productImageUpload, asyncHandler(catalog.createProduct));
 router.put("/products/:id", productImageUpload, asyncHandler(catalog.updateProduct));

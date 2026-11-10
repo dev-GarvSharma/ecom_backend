@@ -1,13 +1,14 @@
-const credentials = () => {
-  const keyId = process.env.RAZORPAY_KEY_ID;
-  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+const credentials = (mode = "live") => {
+  const keyId = mode === "test" ? process.env.RAZORPAY_TEST_KEY_ID : process.env.RAZORPAY_KEY_ID;
+  const keySecret =
+    mode === "test" ? process.env.RAZORPAY_TEST_KEY_SECRET : process.env.RAZORPAY_KEY_SECRET;
   if (!keyId || !keySecret)
     throw Object.assign(new Error("Razorpay is not configured."), { status: 503 });
   return { keyId, keySecret };
 };
 
-const request = async (endpoint, options = {}) => {
-  const { keyId, keySecret } = credentials();
+const request = async (endpoint, options = {}, mode = "live") => {
+  const { keyId, keySecret } = credentials(mode);
   const response = await fetch(`https://api.razorpay.com/v1${endpoint}`, {
     ...options,
     signal: AbortSignal.timeout(10000),
@@ -25,10 +26,11 @@ const request = async (endpoint, options = {}) => {
   return result;
 };
 
-export const createRazorpayOrder = (payload) =>
-  request("/orders", { method: "POST", body: JSON.stringify(payload) });
+export const createRazorpayOrder = (payload, mode = "live") =>
+  request("/orders", { method: "POST", body: JSON.stringify(payload) }, mode);
 
-export const fetchRazorpayPayment = (paymentId) =>
-  request(`/payments/${encodeURIComponent(paymentId)}`);
+export const fetchRazorpayPayment = (paymentId, mode = "live") =>
+  request(`/payments/${encodeURIComponent(paymentId)}`, {}, mode);
 
-export const getRazorpayKeyId = () => credentials().keyId;
+export const getRazorpayKeyId = (mode = "live") => credentials(mode).keyId;
+export const getRazorpayKeySecret = (mode = "live") => credentials(mode).keySecret;

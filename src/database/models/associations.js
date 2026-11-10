@@ -12,6 +12,10 @@ import Setting from "./setting.js";
 import Address from "./address.js";
 import ProductImage from "./productImage.js";
 import ProductVariant from "./productVariant.js";
+import ProductReview from "./productReview.js";
+import ProductReelLink from "./productReelLink.js";
+import ProductFeatureNote from "./productFeatureNote.js";
+import ProductFaq from "./productFaq.js";
 import Role from "./role.js";
 import Permission from "./permission.js";
 import Promotion from "./promotion.js";
@@ -36,6 +40,22 @@ Product.hasMany(ProductVariant, {
   onDelete: "CASCADE",
 });
 ProductVariant.belongsTo(Product, { foreignKey: "productId", as: "product" });
+Product.hasMany(ProductReview, { foreignKey: "productId", as: "reviews", onDelete: "CASCADE" });
+ProductReview.belongsTo(Product, { foreignKey: "productId", as: "product" });
+Product.hasMany(ProductReelLink, {
+  foreignKey: "productId",
+  as: "reelsLinks",
+  onDelete: "CASCADE",
+});
+ProductReelLink.belongsTo(Product, { foreignKey: "productId", as: "product" });
+Product.hasMany(ProductFeatureNote, {
+  foreignKey: "productId",
+  as: "featureNotes",
+  onDelete: "CASCADE",
+});
+ProductFeatureNote.belongsTo(Product, { foreignKey: "productId", as: "product" });
+Product.hasMany(ProductFaq, { foreignKey: "productId", as: "faqs", onDelete: "CASCADE" });
+ProductFaq.belongsTo(Product, { foreignKey: "productId", as: "product" });
 User.hasOne(Cart, { foreignKey: "userId", as: "cart" });
 Cart.belongsTo(User, { foreignKey: "userId", as: "user" });
 Cart.hasMany(CartItem, {
@@ -99,7 +119,11 @@ User.hasMany(UserInteractionEvent, { foreignKey: "userId", as: "interactionEvent
 UserInteractionEvent.belongsTo(User, { foreignKey: "userId", as: "user" });
 User.hasMany(AuditLog, { foreignKey: "actorUserId", as: "auditEvents" });
 AuditLog.belongsTo(User, { foreignKey: "actorUserId", as: "actor" });
-Campaign.hasMany(CampaignDelivery, { foreignKey: "campaignId", as: "deliveries", onDelete: "CASCADE" });
+Campaign.hasMany(CampaignDelivery, {
+  foreignKey: "campaignId",
+  as: "deliveries",
+  onDelete: "CASCADE",
+});
 CampaignDelivery.belongsTo(Campaign, { foreignKey: "campaignId", as: "campaign" });
 User.hasMany(CampaignDelivery, { foreignKey: "userId", as: "campaignDeliveries" });
 CampaignDelivery.belongsTo(User, { foreignKey: "userId", as: "recipient" });

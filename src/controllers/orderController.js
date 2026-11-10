@@ -11,6 +11,7 @@ import {
   CartSession,
   UserInteractionEvent,
   Promotion,
+  Setting,
 } from "../database/models/index.js";
 import { ok, fail } from "../utils/http.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -23,6 +24,8 @@ import {
 export const checkout = async (req, res) => {
   const { address, paymentMode, paymentMethod, couponCode } = req.body;
   const method = String(paymentMode || paymentMethod || "UPI").toUpperCase();
+  const modeSetting = await Setting.findByPk("razorpay_mode");
+  const razorpayMode = modeSetting?.value === "test" ? "test" : "live";
   const availableMethods =
     process.env.ENABLE_COD === "true" ? ["COD", "UPI", "CARD"] : ["UPI", "CARD"];
   if (!availableMethods.includes(method))
@@ -151,6 +154,7 @@ export const checkout = async (req, res) => {
         status: "Pending",
         paymentMethod: method,
         paymentProvider: method === "COD" ? null : "razorpay",
+        razorpayMode: method === "COD" ? "live" : razorpayMode,
         currency: "INR",
         subtotal,
         discount,
@@ -163,16 +167,19 @@ export const checkout = async (req, res) => {
     );
     let payment = null;
     if (method !== "COD") {
-      const razorpayOrder = await createRazorpayOrder({
-        amount: Math.round(Number(order.total) * 100),
-        currency: order.currency,
-        receipt: order.orderNumber,
-        notes: { ecom_order_id: order.id, ecom_order_number: order.orderNumber },
-      });
+      const razorpayOrder = await createRazorpayOrder(
+        {
+          amount: Math.round(Number(order.total) * 100),
+          currency: order.currency,
+          receipt: order.orderNumber,
+          notes: { ecom_order_id: order.id, ecom_order_number: order.orderNumber },
+        },
+        razorpayMode,
+      );
       order.razorpayOrderId = razorpayOrder.id;
       await order.save({ transaction: t });
       payment = {
-        keyId: getRazorpayKeyId(),
+        keyId: getRazorpayKeyId(razorpayMode),
         orderId: razorpayOrder.id,
         amount: razorpayOrder.amount,
         currency: razorpayOrder.currency,
@@ -254,8 +261,7 @@ export const verifyPayment = async (req, res) => {
   )
     return fail(res, 400, "Payment details do not match this order.");
 
-  const keySecret = process.env.RAZORPAY_KEY_SECRET;
-  if (!keySecret) return fail(res, 503, "Razorpay is not configured.");
+  const keySecret = getRazorpayKeySecret(order.razorpayMode || "live");
   const expected = createHmac("sha256", keySecret)
     .update(`${order.razorpayOrderId}|${paymentId}`)
     .digest();
@@ -263,7 +269,7 @@ export const verifyPayment = async (req, res) => {
   if (received.length !== expected.length || !timingSafeEqual(received, expected))
     return fail(res, 400, "Invalid Razorpay payment signature.");
 
-  const payment = await fetchRazorpayPayment(paymentId);
+  const payment = await fetchRazorpayPayment(paymentId, order.razorpayMode || "live");
   if (
     payment.order_id !== order.razorpayOrderId ||
     Number(payment.amount) !== Math.round(Number(order.total) * 100) ||

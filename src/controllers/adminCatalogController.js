@@ -4,6 +4,10 @@ import {
   Product,
   ProductImage,
   ProductVariant,
+  ProductReview,
+  ProductReelLink,
+  ProductFeatureNote,
+  ProductFaq,
   AuditLog,
   sequelize,
 } from "../database/models/index.js";
@@ -52,6 +56,9 @@ const associations = [
   { model: Category, as: "category" },
   { model: ProductImage, as: "images", attributes: ["id", "path"] },
   { model: ProductVariant, as: "variants" },
+  { model: ProductReelLink, as: "reelsLinks", separate: true, order: [["position", "ASC"]] },
+  { model: ProductFeatureNote, as: "featureNotes", separate: true, order: [["position", "ASC"]] },
+  { model: ProductFaq, as: "faqs", separate: true, order: [["position", "ASC"]] },
 ];
 
 export const listProducts = async (req, res) => {
@@ -125,19 +132,64 @@ const saveProduct = async (req, res, existing = null) => {
     heartNotes: parseJson(body.heartNotes, []),
     baseNotes: parseJson(body.baseNotes, []),
     attributes: parseJson(body.attributes, {}),
+    ratingAverage: existing?.ratingAverage ?? null,
+    reviewCount: existing?.reviewCount ?? 0,
+    sprays:
+      body.sprays === undefined
+        ? (existing?.sprays ?? null)
+        : body.sprays === "" || body.sprays === null
+          ? null
+          : Number(body.sprays),
+    labelText: body.labelText ?? existing?.labelText ?? null,
+    metaTitle: body.metaTitle ?? existing?.metaTitle ?? null,
+    metaDescription: body.metaDescription ?? existing?.metaDescription ?? null,
+    metaKeywords: body.metaKeywords ?? existing?.metaKeywords ?? null,
+    url: body.url ?? existing?.url ?? null,
+    canonicalUrl: body.canonicalUrl ?? existing?.canonicalUrl ?? null,
+    robotsTags: body.robotsTags ?? existing?.robotsTags ?? null,
     showOnShop,
     status,
   };
+  for (const [key, label, required] of [
+    ["reelsLinks", "Reel links", "url"],
+    ["featureNotes", "Feature notes", "text"],
+    ["faqs", "Product FAQs", "question"],
+  ]) {
+    const rows = parseJson(body[key], []);
+    if (!Array.isArray(rows)) return fail(res, 400, `${label} must be a list.`);
+    if (rows.some((item) => !String(item?.[required] || "").trim()))
+      return fail(res, 400, `Each ${label.toLowerCase()} row needs ${required}.`);
+    if (key === "featureNotes" && rows.some((item) => !String(item.text || "").trim()))
+      return fail(res, 400, "Each feature note needs text.");
+    if (key === "faqs" && rows.some((item) => !String(item.answer || "").trim()))
+      return fail(res, 400, "Each FAQ needs an answer.");
+    if (body[key] !== undefined) body[key] = rows;
+  }
+  if (
+    productValues.sprays !== null &&
+    (!Number.isInteger(productValues.sprays) || productValues.sprays < 0)
+  )
+    return fail(res, 400, "Sprays must be a non-negative whole number.");
   if (!productValues.name) return fail(res, 400, "Product name is required.");
 
   const variantImageFiles = new Map();
+  const featureNoteImageFiles = new Map();
   const requestFiles = uploadedFiles(req);
   const productImagesUploaded = requestFiles.some((file) => file.fieldname === "images");
   for (const file of requestFiles) {
     if (file.fieldname === "images") continue;
+    const featureMatch = /^featureNoteImage_(\d+)$/.exec(file.fieldname);
+    if (featureMatch) {
+      featureNoteImageFiles.set(Number(featureMatch[1]), `/uploads/${file.filename}`);
+      continue;
+    }
     const match = /^variantImage_(\d+)_(\d+)$/.exec(file.fieldname);
     if (!match || Number(match[2]) > 4)
-      return fail(res, 400, "Variant image fields are invalid. Each variant supports up to five images.");
+      return fail(
+        res,
+        400,
+        "Variant image fields are invalid. Each variant supports up to five images.",
+      );
     const key = `${match[1]}:${match[2]}`;
     if (variantImageFiles.has(key))
       return fail(res, 400, "Only one image can be uploaded for each variant image position.");
@@ -149,6 +201,27 @@ const saveProduct = async (req, res, existing = null) => {
       const row = existing
         ? await existing.update(productValues, { transaction })
         : await Product.create(productValues, { transaction });
+      for (const [key, Model, fields] of [
+        ["reelsLinks", ProductReelLink, ["url"]],
+        ["featureNotes", ProductFeatureNote, ["text", "image"]],
+        ["faqs", ProductFaq, ["question", "answer"]],
+      ]) {
+        if (body[key] === undefined) continue;
+        await Model.destroy({ where: { productId: row.id }, transaction });
+        const values = body[key].map((item, position) => ({
+          productId: row.id,
+          position,
+          ...Object.fromEntries(
+            fields.map((field) => [
+              field,
+              field === "image"
+                ? featureNoteImageFiles.get(position) || item[field] || null
+                : item[field] || null,
+            ]),
+          ),
+        }));
+        if (values.length) await Model.bulkCreate(values, { transaction });
+      }
       const currentVariants = await ProductVariant.findAll({
         where: { productId: row.id },
         transaction,
@@ -159,17 +232,23 @@ const saveProduct = async (req, res, existing = null) => {
         if (!submittedIds.has(variant.id)) await variant.update({ active: false }, { transaction });
       }
       for (const [variantIndex, variant] of variants.entries()) {
-        const current = variant.id
-          ? currentVariants.find((item) => item.id === variant.id)
-          : null;
-        const formIndex = variant.formIndex !== undefined && variant.formIndex !== null && variant.formIndex !== "" && Number.isInteger(Number(variant.formIndex))
-          ? Number(variant.formIndex)
-          : variantIndex;
+        const current = variant.id ? currentVariants.find((item) => item.id === variant.id) : null;
+        const formIndex =
+          variant.formIndex !== undefined &&
+          variant.formIndex !== null &&
+          variant.formIndex !== "" &&
+          Number.isInteger(Number(variant.formIndex))
+            ? Number(variant.formIndex)
+            : variantIndex;
         const submittedImages = Array.isArray(variant.images)
           ? variant.images
           : current?.images || [];
-        const variantImages = Array.from({ length: 5 }, (_, imageIndex) =>
-          variantImageFiles.get(`${formIndex}:${imageIndex}`) || submittedImages[imageIndex] || null,
+        const variantImages = Array.from(
+          { length: 5 },
+          (_, imageIndex) =>
+            variantImageFiles.get(`${formIndex}:${imageIndex}`) ||
+            submittedImages[imageIndex] ||
+            null,
         ).filter(Boolean);
         const values = {
           sku: String(variant.sku).trim(),
@@ -264,6 +343,95 @@ export const deleteProduct = async (req, res) => {
   });
   await clearCache();
   return ok(res, null, "Product archived.");
+};
+
+export const productReviews = async (req, res) => {
+  const { page, limit, offset } = pageOptions(req);
+  const where = {};
+  if (req.query.productId) where.productId = req.query.productId;
+  if (["pending", "approved", "disapproved"].includes(req.query.status))
+    where.status = req.query.status;
+  const { rows, count } = await ProductReview.findAndCountAll({
+    where,
+    include: [{ model: Product, as: "product", attributes: ["id", "name", "slug"] }],
+    limit,
+    offset,
+    order: [["createdAt", "DESC"]],
+  });
+  return ok(res, rows, "Reviews loaded.", {
+    totalRecords: count,
+    totalPages: Math.ceil(count / limit),
+    currentPage: page,
+  });
+};
+
+export const moderateProductReview = async (req, res) => {
+  const review = await ProductReview.findByPk(req.params.id);
+  if (!review) return fail(res, 404, "Review not found.");
+  const status = req.body.status;
+  if (!["approved", "disapproved"].includes(status))
+    return fail(res, 400, "Status must be approved or disapproved.");
+  await sequelize.transaction(async (transaction) => {
+    await review.update({ status }, { transaction });
+    const aggregate = await ProductReview.findOne({
+      where: { productId: review.productId, status: "approved" },
+      attributes: [
+        [sequelize.fn("AVG", sequelize.col("rating")), "average"],
+        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+      ],
+      raw: true,
+      transaction,
+    });
+    await Product.update(
+      {
+        ratingAverage: aggregate.count ? Number(Number(aggregate.average).toFixed(2)) : null,
+        reviewCount: Number(aggregate.count || 0),
+      },
+      { where: { id: review.productId }, transaction },
+    );
+  });
+  return ok(res, review, "Review moderation updated.");
+};
+
+export const createAdminProductReview = async (req, res) => {
+  const product = await Product.findByPk(req.body.productId);
+  const rating = Number(req.body.rating);
+  const customerName = String(req.body.customerName || "")
+    .trim()
+    .slice(0, 120);
+  const body = String(req.body.body || "").trim();
+  const status = req.body.status || "pending";
+  if (!product) return fail(res, 400, "Select an existing product.");
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5 || !customerName || !body)
+    return fail(res, 400, "A customer name, review, and rating from 1 to 5 are required.");
+  if (!["pending", "approved", "disapproved"].includes(status))
+    return fail(res, 400, "Review status is invalid.");
+  const review = await ProductReview.create({
+    productId: product.id,
+    customerName,
+    rating,
+    title:
+      String(req.body.title || "")
+        .trim()
+        .slice(0, 180) || null,
+    body,
+    status,
+  });
+  if (status === "approved") {
+    const aggregate = await ProductReview.findOne({
+      where: { productId: product.id, status: "approved" },
+      attributes: [
+        [sequelize.fn("AVG", sequelize.col("rating")), "average"],
+        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+      ],
+      raw: true,
+    });
+    await product.update({
+      ratingAverage: Number(Number(aggregate.average).toFixed(2)),
+      reviewCount: Number(aggregate.count || 0),
+    });
+  }
+  return ok(res, review, "Review created.", null, 201);
 };
 
 export const setVisibility = async (req, res) => {

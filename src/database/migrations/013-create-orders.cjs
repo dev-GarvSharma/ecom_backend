@@ -26,6 +26,11 @@ module.exports = {
       },
       payment_method: DataTypes.STRING(30),
       payment_provider: DataTypes.STRING(40),
+      razorpay_mode: {
+        type: DataTypes.ENUM("live", "test"),
+        allowNull: false,
+        defaultValue: "live",
+      },
       payment_due_at: DataTypes.DATE,
       cancel_reason: DataTypes.STRING(500),
       cancelled_at: DataTypes.DATE,

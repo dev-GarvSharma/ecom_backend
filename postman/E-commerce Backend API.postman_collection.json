@@ -231,7 +231,7 @@
                 "value": "Bearer {{accessToken}}"
               }
             ],
-            "url": "{{baseUrl}}/catalog/products"
+            "url": "{{baseUrl}}/catalog/products?minPrice={{minPrice}}&maxPrice={{maxPrice}}&category={{categorySlug}}&note={{note}}&sort={{sort}}&page={{page}}&recordPerPage={{recordPerPage}}"
           }
         },
         {
@@ -244,7 +244,41 @@
                 "value": "Bearer {{accessToken}}"
               }
             ],
-            "url": "{{baseUrl}}/catalog/products?search={{search}}"
+            "url": "{{baseUrl}}/catalog/products?search={{search}}&minPrice={{minPrice}}&maxPrice={{maxPrice}}&categoryId={{categoryId}}&note={{note}}&sort={{sort}}&page={{page}}&recordPerPage={{recordPerPage}}"
+          }
+        },
+        {
+          "name": "List product reviews",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/catalog/products/{{productId}}/reviews?page={{page}}&recordPerPage={{recordPerPage}}"
+          }
+        },
+        {
+          "name": "Submit product review",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/catalog/products/{{productId}}/reviews",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerName\": \"Sample Customer\",\n  \"rating\": 5,\n  \"title\": \"Lovely fragrance\",\n  \"body\": \"A sample review for this product.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           }
         },
         {
@@ -830,7 +864,7 @@
             "url": "{{baseUrl}}/admin/products",
             "body": {
               "mode": "raw",
-              "raw": "{}",
+              "raw": "{\n  \"categoryId\": \"{{categoryId}}\",\n  \"name\": \"Sample Eau de Parfum\",\n  \"slug\": \"sample-eau-de-parfum\",\n  \"description\": \"A sample product description.\",\n  \"brand\": \"Sample House\",\n  \"concentration\": \"EDP\",\n  \"fragranceFamily\": \"Woody\",\n  \"topNotes\": [\"Bergamot\"],\n  \"heartNotes\": [\"Rose\"],\n  \"baseNotes\": [\"Cedar\"],\n  \"attributes\": {},\n  \"sprays\": 500,\n  \"labelText\": \"Long lasting\",\n  \"showOnShop\": true,\n  \"status\": \"active\",\n  \"variants\": [{\"sku\": \"SAMPLE-50\", \"price\": 1499, \"compareAtPrice\": 1799, \"stock\": 25, \"options\": {\"size\": \"50ml\"}, \"images\": []}],\n  \"images\": [],\n  \"reelsLinks\": [{\"url\": \"https://www.instagram.com/reel/example/\"}],\n  \"featureNotes\": [{\"text\": \"A fresh opening with a warm woody dry-down.\", \"image\": \"https://example.com/feature.jpg\"}],\n  \"faqs\": [{\"question\": \"How long does it last?\", \"answer\": \"Wear time varies by skin and conditions.\"}],\n  \"metaTitle\": \"Sample Eau de Parfum | Store\",\n  \"metaDescription\": \"Discover Sample Eau de Parfum.\",\n  \"metaKeywords\": \"perfume, eau de parfum\",\n  \"url\": \"/products/sample-eau-de-parfum\",\n  \"canonicalUrl\": \"https://example.com/products/sample-eau-de-parfum\",\n  \"robotsTags\": \"index,follow\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -856,7 +890,7 @@
             "url": "{{baseUrl}}/admin/products/{{recordId}}",
             "body": {
               "mode": "raw",
-              "raw": "{}",
+              "raw": "{\n  \"categoryId\": \"{{categoryId}}\",\n  \"name\": \"Sample Eau de Parfum\",\n  \"description\": \"Updated product description.\",\n  \"sprays\": 500,\n  \"labelText\": \"Long lasting\",\n  \"showOnShop\": true,\n  \"status\": \"active\",\n  \"variants\": [{\"sku\": \"SAMPLE-50\", \"price\": 1499, \"compareAtPrice\": 1799, \"stock\": 25, \"options\": {\"size\": \"50ml\"}, \"images\": []}],\n  \"images\": [],\n  \"reelsLinks\": [{\"url\": \"https://www.instagram.com/reel/example/\"}],\n  \"featureNotes\": [{\"text\": \"A fresh opening with a warm woody dry-down.\", \"image\": \"https://example.com/feature.jpg\"}],\n  \"faqs\": [{\"question\": \"How long does it last?\", \"answer\": \"Wear time varies by skin and conditions.\"}],\n  \"metaTitle\": \"Sample Eau de Parfum | Store\",\n  \"metaDescription\": \"Discover Sample Eau de Parfum.\",\n  \"metaKeywords\": \"perfume, eau de parfum\",\n  \"url\": \"/products/sample-eau-de-parfum\",\n  \"canonicalUrl\": \"https://example.com/products/sample-eau-de-parfum\",\n  \"robotsTags\": \"index,follow\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1404,6 +1438,123 @@
               ]
             }
           }
+        },
+        {
+          "name": "List product reviews",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/product-reviews?productId={{productId}}&status={{reviewStatus}}&page={{page}}&recordPerPage={{recordPerPage}}"
+          }
+        },
+        {
+          "name": "Create product review",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/product-reviews",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"customerName\": \"Sample Customer\",\n  \"rating\": 5,\n  \"title\": \"Lovely fragrance\",\n  \"body\": \"A sample review for this product.\",\n  \"status\": \"pending\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Moderate product review",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/product-reviews/{{reviewId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"approved\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Razorpay mode",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/razorpay/mode"
+          }
+        },
+        {
+          "name": "Set Razorpay mode",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/razorpay/mode",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"test\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List Razorpay test orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/razorpay/test-orders?page={{page}}&recordPerPage={{recordPerPage}}"
+          }
         }
       ]
     }
@@ -1496,6 +1647,46 @@
     {
       "key": "registerPhone",
       "value": "+919900000099"
+    },
+    {
+      "key": "categoryId",
+      "value": ""
+    },
+    {
+      "key": "categorySlug",
+      "value": ""
+    },
+    {
+      "key": "minPrice",
+      "value": ""
+    },
+    {
+      "key": "maxPrice",
+      "value": ""
+    },
+    {
+      "key": "note",
+      "value": ""
+    },
+    {
+      "key": "sort",
+      "value": "price_asc"
+    },
+    {
+      "key": "page",
+      "value": "1"
+    },
+    {
+      "key": "recordPerPage",
+      "value": "20"
+    },
+    {
+      "key": "reviewStatus",
+      "value": "pending"
+    },
+    {
+      "key": "reviewId",
+      "value": ""
     }
   ]
 }

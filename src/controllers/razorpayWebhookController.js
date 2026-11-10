@@ -10,11 +10,8 @@ const validSignature = (body, signature, secret) => {
 };
 
 export const razorpayWebhook = async (req, res) => {
-  const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
-  if (!secret) return fail(res, 503, "Razorpay webhook is not configured.");
   if (!Buffer.isBuffer(req.body)) return fail(res, 400, "Raw webhook body is required.");
-  if (!validSignature(req.body, req.get("x-razorpay-signature"), secret))
-    return fail(res, 400, "Invalid Razorpay webhook signature.");
+  const signature = req.get("x-razorpay-signature");
 
   let event;
   try {
@@ -31,10 +28,20 @@ export const razorpayWebhook = async (req, res) => {
     : gatewayOrderId
       ? { razorpayOrderId: gatewayOrderId }
       : null;
-  if (!where) return ok(res, { received: true, matched: false }, "Webhook received.");
-
-  const order = await Order.findOne({ where });
-  if (!order) return ok(res, { received: true, matched: false }, "Webhook received.");
+  const order = where ? await Order.findOne({ where }) : null;
+  const secrets = order
+    ? [
+        order.razorpayMode === "test"
+          ? process.env.RAZORPAY_TEST_WEBHOOK_SECRET || process.env.RAZORPAY_WEBHOOK_SECRET
+          : process.env.RAZORPAY_WEBHOOK_SECRET,
+      ]
+    : [process.env.RAZORPAY_WEBHOOK_SECRET, process.env.RAZORPAY_TEST_WEBHOOK_SECRET].filter(
+        Boolean,
+      );
+  if (!secrets.length) return fail(res, 503, "Razorpay webhook is not configured.");
+  if (!secrets.some((secret) => validSignature(req.body, signature, secret)))
+    return fail(res, 400, "Invalid Razorpay webhook signature.");
+  if (!where || !order) return ok(res, { received: true, matched: false }, "Webhook received.");
 
   switch (event.event) {
     case "payment.captured":
