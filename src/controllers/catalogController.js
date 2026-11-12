@@ -8,6 +8,7 @@ import {
   ProductReelLink,
   ProductFeatureNote,
   ProductFaq,
+  Promotion,
   sequelize,
 } from "../database/models/index.js";
 import { fail, ok } from "../utils/http.js";
@@ -208,4 +209,53 @@ export const productsListHomepage = async (req, res) => {
   });
   if (!row) return fail(res, 404, "Products not found.");
   return ok(res, row, "Products loaded.");
+};
+
+export const promotionalProducts = async (_req, res) => {
+  const now = new Date();
+  const promotions = await Promotion.findAll({
+    where: {
+      active: true,
+      type: "free_product",
+      promotionalVariantId: { [Op.ne]: null },
+      [Op.and]: [
+        { [Op.or]: [{ startsAt: null }, { startsAt: { [Op.lte]: now } }] },
+        { [Op.or]: [{ endsAt: null }, { endsAt: { [Op.gte]: now } }] },
+      ],
+    },
+    include: [
+      {
+        model: ProductVariant,
+        as: "promotionalVariant",
+        where: { active: true, stock: { [Op.gt]: 0 } },
+        required: true,
+        include: [
+          {
+            model: Product,
+            as: "product",
+            where: { status: "active", showOnShop: true },
+            required: true,
+            include: [{ model: ProductImage, as: "images", attributes: ["id", "path"] }],
+          },
+        ],
+      },
+    ],
+    order: [["minimumSubtotal", "ASC"]],
+  });
+  const available = promotions.filter(
+    (promotion) => !promotion.usageLimit || promotion.usedCount < promotion.usageLimit,
+  );
+  return ok(
+    res,
+    available.map((promotion) => ({
+      id: promotion.id,
+      code: promotion.code,
+      name: promotion.name,
+      minimumSubtotal: promotion.minimumSubtotal,
+      promotionalProduct: promotion.promotionalVariant,
+      remainingUses:
+        promotion.usageLimit == null ? null : Math.max(0, promotion.usageLimit - promotion.usedCount),
+    })),
+    "Promotional products loaded.",
+  );
 };

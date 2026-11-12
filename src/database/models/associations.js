@@ -129,5 +129,6 @@ User.hasMany(CampaignDelivery, { foreignKey: "userId", as: "campaignDeliveries" 
 CampaignDelivery.belongsTo(User, { foreignKey: "userId", as: "recipient" });
 CartItem.belongsTo(Promotion, { foreignKey: "promotionId", as: "promotion" });
 Promotion.hasMany(CartItem, { foreignKey: "promotionId", as: "cartItems" });
+Promotion.belongsTo(ProductVariant, { foreignKey: "promotionalVariantId", as: "promotionalVariant" });
 BlogPost.hasMany(BlogComment, { foreignKey: "blogPostId", as: "comments", onDelete: "CASCADE" });
 BlogComment.belongsTo(BlogPost, { foreignKey: "blogPostId", as: "post" });

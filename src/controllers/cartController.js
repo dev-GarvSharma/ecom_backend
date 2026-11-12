@@ -18,7 +18,12 @@ export const cartGet = async (req, res) => {
     where: { cartId: c.id },
     defaults: { lastActivityAt: new Date() },
   });
-  await session.update({ lastActivityAt: new Date(), status: "active", abandonedAt: null, recoverySentAt: null });
+  await session.update({
+    lastActivityAt: new Date(),
+    status: "active",
+    abandonedAt: null,
+    recoverySentAt: null,
+  });
   return ok(
     res,
     await CartItem.findAll({
@@ -84,7 +89,12 @@ export const applyPromotion = async (req, res) => {
     where: { cartId: cart.id },
     defaults: { lastActivityAt: new Date() },
   });
-  await session.update({ lastActivityAt: new Date(), status: "active", abandonedAt: null, recoverySentAt: null });
+  await session.update({
+    lastActivityAt: new Date(),
+    status: "active",
+    abandonedAt: null,
+    recoverySentAt: null,
+  });
   await UserInteractionEvent.create({
     userId: req.user.id,
     cartId: cart.id,
@@ -119,7 +129,12 @@ export const cartAdd = async (req, res) => {
     where: { cartId: c.id },
     defaults: { lastActivityAt: new Date() },
   }).then(([session]) =>
-    session.update({ lastActivityAt: new Date(), status: "active", abandonedAt: null, recoverySentAt: null }),
+    session.update({
+      lastActivityAt: new Date(),
+      status: "active",
+      abandonedAt: null,
+      recoverySentAt: null,
+    }),
   );
   await UserInteractionEvent.create({
     userId: req.user.id,
