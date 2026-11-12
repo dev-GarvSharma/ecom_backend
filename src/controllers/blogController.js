@@ -6,12 +6,21 @@ import sanitizeHtml from "../utils/sanitizeHtml.js";
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const paging = (req) => {
   const page = Math.max(1, Number.parseInt(req.query.page || "1", 10) || 1);
-  const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.recordPerPage || "20", 10) || 20));
+  const limit = Math.min(
+    50,
+    Math.max(1, Number.parseInt(req.query.limit || req.query.recordPerPage || "20", 10) || 20),
+  );
   return { page, limit, offset: (page - 1) * limit };
 };
-const makeSlug = (value) => String(value || "").trim().toLowerCase()
-  .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
-  .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 220);
+const makeSlug = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 220);
 const parseTags = (value) => {
   const tags = Array.isArray(value) ? value : String(value || "").split(",");
   return [...new Set(tags.map((tag) => String(tag).trim()).filter(Boolean))].slice(0, 20);
@@ -21,7 +30,17 @@ export const blogList = async (req, res) => {
   const { page, limit, offset } = paging(req);
   const { rows, count } = await BlogPost.findAndCountAll({
     where: { status: "published", publishedAt: { [Op.lte]: new Date() } },
-    attributes: ["id", "title", "slug", "description", "bannerImage", "publishedAt", "metaTitle", "metaDescription", "metaTags"],
+    attributes: [
+      "id",
+      "title",
+      "slug",
+      "description",
+      "bannerImage",
+      "publishedAt",
+      "metaTitle",
+      "metaDescription",
+      "metaTags",
+    ],
     limit,
     offset,
     order: [["publishedAt", "DESC"]],
@@ -36,15 +55,28 @@ export const blogList = async (req, res) => {
 export const blogDetails = async (req, res) => {
   const post = await BlogPost.findOne({
     where: { slug: req.params.slug, status: "published", publishedAt: { [Op.lte]: new Date() } },
-    attributes: ["id", "title", "slug", "description", "content", "bannerImage", "publishedAt", "metaTitle", "metaDescription", "metaTags"],
-    include: [{
-      model: BlogComment,
-      as: "comments",
-      where: { status: "approved" },
-      required: false,
-      attributes: ["id", "name", "comment", "createdAt"],
-      order: [["createdAt", "ASC"]],
-    }],
+    attributes: [
+      "id",
+      "title",
+      "slug",
+      "description",
+      "content",
+      "bannerImage",
+      "publishedAt",
+      "metaTitle",
+      "metaDescription",
+      "metaTags",
+    ],
+    include: [
+      {
+        model: BlogComment,
+        as: "comments",
+        where: { status: "approved" },
+        required: false,
+        attributes: ["id", "name", "comment", "createdAt"],
+        order: [["createdAt", "ASC"]],
+      },
+    ],
   });
   if (!post) return fail(res, 404, "Blog post not found.");
   post.comments.sort((first, second) => new Date(first.createdAt) - new Date(second.createdAt));
@@ -58,11 +90,16 @@ export const submitBlogComment = async (req, res) => {
   });
   if (!post) return fail(res, 404, "Blog post not found.");
   const name = String(req.body.name || "").trim();
-  const email = String(req.body.email || "").trim().toLowerCase();
+  const email = String(req.body.email || "")
+    .trim()
+    .toLowerCase();
   const comment = String(req.body.comment || "").trim();
-  if (name.length < 2 || name.length > 120) return fail(res, 400, "Name must be 2 to 120 characters.");
-  if (email.length > 254 || !emailPattern.test(email)) return fail(res, 400, "Enter a valid email address.");
-  if (comment.length < 2 || comment.length > 3000) return fail(res, 400, "Comment must be 2 to 3,000 characters.");
+  if (name.length < 2 || name.length > 120)
+    return fail(res, 400, "Name must be 2 to 120 characters.");
+  if (email.length > 254 || !emailPattern.test(email))
+    return fail(res, 400, "Enter a valid email address.");
+  if (comment.length < 2 || comment.length > 3000)
+    return fail(res, 400, "Comment must be 2 to 3,000 characters.");
   await BlogComment.create({ blogPostId: post.id, name, email, comment, status: "pending" });
   return ok(res, null, "Your comment was submitted for admin approval.", null, 201);
 };
@@ -94,11 +131,15 @@ const saveBlogPost = async (req, res, existing = null) => {
   const content = sanitizeHtml(req.body.content);
   const slug = makeSlug(req.body.slug || title);
   const status = String(req.body.status || existing?.status || "draft");
-  if (title.length < 2 || title.length > 200) return fail(res, 400, "Title must be 2 to 200 characters.");
+  if (title.length < 2 || title.length > 200)
+    return fail(res, 400, "Title must be 2 to 200 characters.");
   if (!slug) return fail(res, 400, "Add a title or valid slug.");
-  if (description.length < 2 || description.length > 500) return fail(res, 400, "Description must be 2 to 500 characters.");
-  if (content.replace(/<[^>]+>/g, " ").trim().length < 2) return fail(res, 400, "Blog content is required.");
-  if (!["draft", "published"].includes(status)) return fail(res, 400, "Status must be draft or published.");
+  if (description.length < 2 || description.length > 500)
+    return fail(res, 400, "Description must be 2 to 500 characters.");
+  if (content.replace(/<[^>]+>/g, " ").trim().length < 2)
+    return fail(res, 400, "Blog content is required.");
+  if (!["draft", "published"].includes(status))
+    return fail(res, 400, "Status must be draft or published.");
 
   const bannerImage = req.file ? `/uploads/${req.file.filename}` : existing?.bannerImage || null;
   const values = {
@@ -106,8 +147,14 @@ const saveBlogPost = async (req, res, existing = null) => {
     slug,
     description,
     content,
-    metaTitle: String(req.body.metaTitle || title).trim().slice(0, 200) || null,
-    metaDescription: String(req.body.metaDescription || description).trim().slice(0, 320) || null,
+    metaTitle:
+      String(req.body.metaTitle || title)
+        .trim()
+        .slice(0, 200) || null,
+    metaDescription:
+      String(req.body.metaDescription || description)
+        .trim()
+        .slice(0, 320) || null,
     metaTags: parseTags(req.body.metaTags),
     bannerImage,
     status,
@@ -123,9 +170,16 @@ const saveBlogPost = async (req, res, existing = null) => {
       changes: { title, slug, status, bannerImage },
       ipAddress: req.ip,
     });
-    return ok(res, post, existing ? "Blog post updated." : "Blog post created.", null, existing ? 200 : 201);
+    return ok(
+      res,
+      post,
+      existing ? "Blog post updated." : "Blog post created.",
+      null,
+      existing ? 200 : 201,
+    );
   } catch (error) {
-    if (error.name === "SequelizeUniqueConstraintError") return fail(res, 409, "A blog post already uses this slug.");
+    if (error.name === "SequelizeUniqueConstraintError")
+      return fail(res, 409, "A blog post already uses this slug.");
     throw error;
   }
 };
