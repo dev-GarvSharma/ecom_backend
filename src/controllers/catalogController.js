@@ -119,7 +119,7 @@ export const product = async (req, res) => {
 };
 
 export const categories = async (_q, res) =>
-  ok(res, await Category.findAll({ where: { active: true } }), "Categories loaded.");
+  ok(res, await Category.findAll({ where: { active: true, showOnHomePage: true } }), "Categories loaded.");
 
 export const listProductReviews = async (req, res) => {
   const { page, limit, offset } = paging(req);
@@ -254,7 +254,9 @@ export const promotionalProducts = async (_req, res) => {
       minimumSubtotal: promotion.minimumSubtotal,
       promotionalProduct: promotion.promotionalVariant,
       remainingUses:
-        promotion.usageLimit == null ? null : Math.max(0, promotion.usageLimit - promotion.usedCount),
+        promotion.usageLimit == null
+          ? null
+          : Math.max(0, promotion.usageLimit - promotion.usedCount),
     })),
     "Promotional products loaded.",
   );
