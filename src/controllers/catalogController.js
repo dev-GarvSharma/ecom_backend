@@ -32,14 +32,17 @@ export const catalog = async (req, res) => {
     });
     where.categoryId = category?.id || null;
   }
-  const note = String(req.query.note || "")
+  const note = String(req.query.note || req.query.notes || "")
     .trim()
     .slice(0, 60);
   if (note)
-    where[Op.or] = ["topNotes", "heartNotes", "baseNotes"].map((field) =>
-      sequelize.where(sequelize.fn("JSON_SEARCH", sequelize.col(field), "one", `%${note}%`), {
-        [Op.ne]: null,
-      }),
+    where[Op.or] = ["top_notes", "heart_notes", "base_notes"].map((field) =>
+      sequelize.where(
+        sequelize.fn("JSON_SEARCH", sequelize.col(`Product.${field}`), "one", `%${note}%`),
+        {
+          [Op.ne]: null,
+        },
+      ),
     );
   const minPrice = Number(req.query.minPrice ?? req.query.priceMin);
   const maxPrice = Number(req.query.maxPrice ?? req.query.priceMax);
@@ -119,7 +122,11 @@ export const product = async (req, res) => {
 };
 
 export const categories = async (_q, res) =>
-  ok(res, await Category.findAll({ where: { active: true, showOnHomePage: true } }), "Categories loaded.");
+  ok(
+    res,
+    await Category.findAll({ where: { active: true, showOnHomePage: true } }),
+    "Categories loaded.",
+  );
 
 export const listProductReviews = async (req, res) => {
   const { page, limit, offset } = paging(req);
@@ -193,7 +200,7 @@ export const productsListHomepage = async (req, res) => {
         where: {
           active: true,
         },
-        attributes: ["price", "compareAtPrice", "stock"],
+        attributes: ["id", "price", "compareAtPrice", "stock", "images", "options"],
       },
     ],
     attributes: [

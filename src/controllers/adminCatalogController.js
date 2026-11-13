@@ -31,6 +31,18 @@ const parseJson = (value, fallback) => {
     return fallback;
   }
 };
+const parseNotes = (value, fallback) => {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "string") return null;
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) return parsed;
+  } catch {
+    // Multipart form fields are strings; accept a simple comma-separated list too.
+  }
+  return value.split(",").map((note) => note.trim()).filter(Boolean);
+};
 const parseBoolean = (value, fallback = true) => {
   if (value === undefined) return fallback;
   if (value === true || value === "true" || value === 1 || value === "1") return true;
@@ -128,9 +140,9 @@ const saveProduct = async (req, res, existing = null) => {
     brand: body.brand || null,
     concentration: body.concentration || null,
     fragranceFamily: body.fragranceFamily || null,
-    topNotes: parseJson(body.topNotes, []),
-    heartNotes: parseJson(body.heartNotes, []),
-    baseNotes: parseJson(body.baseNotes, []),
+    topNotes: parseNotes(body.topNotes, existing?.topNotes ?? []),
+    heartNotes: parseNotes(body.heartNotes, existing?.heartNotes ?? []),
+    baseNotes: parseNotes(body.baseNotes, existing?.baseNotes ?? []),
     attributes: parseJson(body.attributes, {}),
     ratingAverage: existing?.ratingAverage ?? null,
     reviewCount: existing?.reviewCount ?? 0,
@@ -150,6 +162,8 @@ const saveProduct = async (req, res, existing = null) => {
     showOnShop,
     status,
   };
+  if ([productValues.topNotes, productValues.heartNotes, productValues.baseNotes].some((notes) => !Array.isArray(notes)))
+    return fail(res, 400, "Product notes must be lists or comma-separated strings.");
   for (const [key, label, required] of [
     ["reelsLinks", "Reel links", "url"],
     ["featureNotes", "Feature notes", "text"],
