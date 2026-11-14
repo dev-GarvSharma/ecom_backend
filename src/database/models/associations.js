@@ -74,6 +74,7 @@ Order.hasMany(OrderItem, {
   onDelete: "CASCADE",
 });
 OrderItem.belongsTo(ProductVariant, { foreignKey: "variantId", as: "variant" });
+OrderItem.belongsTo(Product, { foreignKey: "productId", as: "product" });
 User.hasMany(Address, { foreignKey: "userId", as: "addresses" });
 User.belongsTo(Role, { foreignKey: "roleId", as: "primaryRole" });
 Role.hasMany(User, { foreignKey: "roleId", as: "primaryUsers" });
@@ -129,6 +130,9 @@ User.hasMany(CampaignDelivery, { foreignKey: "userId", as: "campaignDeliveries" 
 CampaignDelivery.belongsTo(User, { foreignKey: "userId", as: "recipient" });
 CartItem.belongsTo(Promotion, { foreignKey: "promotionId", as: "promotion" });
 Promotion.hasMany(CartItem, { foreignKey: "promotionId", as: "cartItems" });
-Promotion.belongsTo(ProductVariant, { foreignKey: "promotionalVariantId", as: "promotionalVariant" });
+Promotion.belongsTo(ProductVariant, {
+  foreignKey: "promotionalVariantId",
+  as: "promotionalVariant",
+});
 BlogPost.hasMany(BlogComment, { foreignKey: "blogPostId", as: "comments", onDelete: "CASCADE" });
 BlogComment.belongsTo(BlogPost, { foreignKey: "blogPostId", as: "post" });

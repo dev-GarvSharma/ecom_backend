@@ -1,6 +1,7 @@
 import {
   sequelize,
   Product,
+  ProductImage,
   ProductVariant,
   Cart,
   CartItem,
@@ -19,7 +20,22 @@ import {
   createRazorpayOrder,
   fetchRazorpayPayment,
   getRazorpayKeyId,
+  getRazorpayKeySecret,
 } from "../services/razorpay.js";
+
+const orderItemsWithProductImages = [
+  {
+    model: OrderItem,
+    as: "items",
+    include: [
+      {
+        model: Product,
+        as: "product",
+        include: [{ model: ProductImage, as: "images", attributes: ["path"] }],
+      },
+    ],
+  },
+];
 
 export const checkout = async (req, res) => {
   const { address, paymentMode, paymentMethod, couponCode } = req.body;
@@ -64,7 +80,17 @@ export const checkout = async (req, res) => {
     const items = await CartItem.findAll({
       where: { cartId: c.id },
       include: [
-        { model: ProductVariant, as: "variant", include: [{ model: Product, as: "product" }] },
+        {
+          model: ProductVariant,
+          as: "variant",
+          include: [
+            {
+              model: Product,
+              as: "product",
+              include: [{ model: ProductImage, as: "images", attributes: ["path"] }],
+            },
+          ],
+        },
       ],
       transaction: t,
       lock: t.LOCK.UPDATE,
@@ -199,6 +225,7 @@ export const checkout = async (req, res) => {
             id: i.variant.product.id,
             slug: i.variant.product.slug,
             description: i.variant.product.description,
+            image: i.variant.product.images?.[0]?.path || i.variant.images?.[0] || null,
           },
           variantSnapshot: { id: i.variant.id, sku: i.variant.sku, options: i.variant.options },
           quantity: i.quantity,
@@ -239,7 +266,11 @@ export const checkout = async (req, res) => {
       },
       { transaction: t },
     );
-    return { order, payment };
+    const orderWithItems = await Order.findByPk(order.id, {
+      include: orderItemsWithProductImages,
+      transaction: t,
+    });
+    return { order: orderWithItems, payment };
   });
   return ok(res, result.payment ? result : result.order, "Order placed.", null, 201);
 };
@@ -286,7 +317,7 @@ export const verifyPayment = async (req, res) => {
   await order.save();
   return ok(
     res,
-    order,
+    await Order.findByPk(order.id, { include: orderItemsWithProductImages }),
     payment.status === "captured" ? "Payment verified." : "Payment is awaiting capture.",
   );
 };
@@ -296,7 +327,7 @@ export const myOrders = async (req, res) =>
     res,
     await Order.findAll({
       where: { userId: req.user.id },
-      include: [{ model: OrderItem, as: "items" }],
+      include: orderItemsWithProductImages,
       order: [["createdAt", "DESC"]],
     }),
     "Orders loaded.",

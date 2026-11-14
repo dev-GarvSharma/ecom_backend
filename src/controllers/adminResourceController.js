@@ -6,6 +6,8 @@ import {
   CartItem,
   Order,
   OrderItem,
+  Product,
+  ProductImage,
   Coupon,
   Notification,
   Address,
@@ -109,22 +111,52 @@ export const adminList = async (req, res) => {
     distinct: true,
   });
   let data = rows;
-  if (resource === "customers")
-    data = rows.map((u) => ({
-      id: u.id,
-      name: u.name,
-      email: u.email,
-      phone: u.phone,
-      isVerified: u.isVerified,
-      marketingEmailSubscribed: u.marketingEmailSubscribed,
-      primaryRole: u.primaryRole?.name || null,
-      location: u.location || "",
-      orders: 0,
-      spent: 0,
-      joined: u.createdAt,
-      segment: "New",
-      status: u.status,
-    }));
+  if (resource === "customers") {
+    const customerIds = rows.map((customer) => customer.id);
+    const orderStats = customerIds.length
+      ? await Order.findAll({
+          attributes: [
+            [sequelize.col("user_id"), "userId"],
+            [sequelize.fn("COUNT", sequelize.col("id")), "totalOrders"],
+            [
+              sequelize.fn(
+                "SUM",
+                sequelize.literal(
+                  "CASE WHEN status <> 'Cancelled' AND payment_status NOT IN ('Failed', 'Refunded') THEN total ELSE 0 END",
+                ),
+              ),
+              "lifetimeSpend",
+            ],
+          ],
+          where: { userId: { [Op.in]: customerIds } },
+          group: [sequelize.col("user_id")],
+          raw: true,
+        })
+      : [];
+    const statsByCustomer = new Map(orderStats.map((stats) => [stats.userId, stats]));
+    data = rows.map((u) => {
+      const stats = statsByCustomer.get(u.id);
+      const totalOrders = Number(stats?.totalOrders || 0);
+      const lifetimeSpend = Number(stats?.lifetimeSpend || 0);
+      return {
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        phone: u.phone,
+        isVerified: u.isVerified,
+        marketingEmailSubscribed: u.marketingEmailSubscribed,
+        primaryRole: u.primaryRole?.name || null,
+        location: u.location || "",
+        orders: totalOrders,
+        totalOrders,
+        spent: lifetimeSpend,
+        lifetimeSpend,
+        joined: u.createdAt,
+        segment: totalOrders > 1 ? "Returning" : "New",
+        status: u.status,
+      };
+    });
+  }
   if (resource === "orders")
     data = rows.map((o) => ({
       id: o.orderNumber,
@@ -215,7 +247,22 @@ export const adminDetail = async (req, res) => {
   const resource = req.params.resource,
     M = map[resource];
   if (!M) return fail(res, 404, "Resource not found.");
-  const include = resource === "orders" ? [{ model: OrderItem, as: "items" }] : [];
+  const include =
+    resource === "orders"
+      ? [
+          {
+            model: OrderItem,
+            as: "items",
+            include: [
+              {
+                model: Product,
+                as: "product",
+                include: [{ model: ProductImage, as: "images", attributes: ["path"] }],
+              },
+            ],
+          },
+        ]
+      : [];
   const row =
     resource === "orders"
       ? await Order.findOne({
