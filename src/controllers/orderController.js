@@ -172,7 +172,7 @@ export const checkout = async (req, res) => {
       coupon.usedCount++;
       await coupon.save({ transaction: t });
     }
-    const shipping = subtotal - discount >= 2999 ? 0 : 99;
+    const shipping = subtotal - discount >= Number(process.env.FREE_SHIPPING_THRESHOLD) ? 0 : Number(process.env.SHIPPING_COST);
     const order = await Order.create(
       {
         orderNumber: "EC-" + Date.now().toString(36).toUpperCase(),

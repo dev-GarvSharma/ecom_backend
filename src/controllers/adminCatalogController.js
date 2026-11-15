@@ -58,7 +58,9 @@ const imagePaths = (req, body) => {
   const uploaded = (Array.isArray(req.files) ? req.files : Object.values(req.files || {}).flat())
     .filter((file) => file.fieldname === "images")
     .map((file) => `/uploads/${file.filename}`);
-  return [...new Set([...savedPaths, ...uploaded])];
+  // New uploads replace the saved set unless the client explicitly submits
+  // `images` as well (which can represent retained images plus new uploads).
+  return [...new Set(body.images === undefined && uploaded.length ? uploaded : [...savedPaths, ...uploaded])];
 };
 
 const uploadedFiles = (req) =>
