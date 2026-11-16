@@ -36,6 +36,7 @@ const Order = sequelize.define(
     total: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
     shippingAddress: { type: DataTypes.JSON, allowNull: false },
     couponCode: DataTypes.STRING,
+    couponConsumed: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   },
   { ...b, tableName: "orders" },
 );

@@ -24,6 +24,7 @@ import {
 } from "../database/models/index.js";
 import { ok, fail } from "../utils/http.js";
 import { clearCache } from "../middleware/cache.js";
+import { releaseCodOrderCoupon } from "../services/couponUsage.js";
 const paging = (req) => {
   const requestedPage = Number.parseInt(req.query.page || "1", 10);
   const requestedLimit = Number.parseInt(req.query.recordPerPage || "20", 10);
@@ -204,9 +205,9 @@ export const razorpayMode = async (_req, res) => {
     {
       mode: setting?.value === "test" ? "test" : "live",
       testConfigured: Boolean(
-        process.env.RAZORPAY_TEST_KEY_ID && process.env.RAZORPAY_TEST_KEY_SECRET,
+        process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET,
       ),
-      liveConfigured: Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
+      liveConfigured: Boolean(process.env.RAZORPAY_LIVE_KEY_ID && process.env.RAZORPAY_LIVE_KEY_SECRET),
     },
     "Razorpay mode loaded.",
   );
@@ -217,8 +218,8 @@ export const setRazorpayMode = async (req, res) => {
   if (!["test", "live"].includes(mode)) return fail(res, 400, "Mode must be test or live.");
   const configured =
     mode === "test"
-      ? process.env.RAZORPAY_TEST_KEY_ID && process.env.RAZORPAY_TEST_KEY_SECRET
-      : process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET;
+      ? process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET
+      : process.env.RAZORPAY_LIVE_KEY_ID && process.env.RAZORPAY_LIVE_KEY_SECRET;
   if (!configured)
     return fail(
       res,
@@ -235,9 +236,9 @@ export const setRazorpayMode = async (req, res) => {
     {
       mode,
       testConfigured: Boolean(
-        process.env.RAZORPAY_TEST_KEY_ID && process.env.RAZORPAY_TEST_KEY_SECRET,
+        process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET,
       ),
-      liveConfigured: Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
+      liveConfigured: Boolean(process.env.RAZORPAY_LIVE_KEY_ID && process.env.RAZORPAY_LIVE_KEY_SECRET),
     },
     `Razorpay ${mode} mode enabled.`,
   );
@@ -588,7 +589,23 @@ export const adminUpdate = async (req, res) => {
   }
   if (resource === "orders" && !Object.keys(values).every((k) => k === "status"))
     return fail(res, 400, "Only order status can be updated.");
-  await row.update(values);
+  if (resource === "orders" && values.status === "Cancelled") {
+    await sequelize.transaction(async (transaction) => {
+      const lockedOrder = await Order.findByPk(row.id, {
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      if (lockedOrder.status !== "Cancelled") {
+        lockedOrder.status = "Cancelled";
+        lockedOrder.cancelledAt = new Date();
+        await releaseCodOrderCoupon(lockedOrder, transaction);
+        await lockedOrder.save({ transaction });
+      }
+    });
+    await row.reload();
+  } else {
+    await row.update(values);
+  }
   if (resource === "customers" && values.status === "suspended")
     await row.update({ refreshTokenHash: null });
   await clearCache();

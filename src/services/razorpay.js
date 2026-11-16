@@ -1,7 +1,7 @@
 const credentials = (mode = "live") => {
-  const keyId = mode === "test" ? process.env.RAZORPAY_TEST_KEY_ID : process.env.RAZORPAY_KEY_ID;
+  const keyId = mode === "test" ? process.env.RAZORPAY_KEY_ID : process.env.RAZORPAY_LIVE_KEY_ID;
   const keySecret =
-    mode === "test" ? process.env.RAZORPAY_TEST_KEY_SECRET : process.env.RAZORPAY_KEY_SECRET;
+    mode === "test" ? process.env.RAZORPAY_KEY_SECRET : process.env.RAZORPAY_LIVE_KEY_SECRET;
   if (!keyId || !keySecret)
     throw Object.assign(new Error("Razorpay is not configured."), { status: 503 });
   return { keyId, keySecret };

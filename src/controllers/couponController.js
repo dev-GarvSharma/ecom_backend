@@ -1,5 +1,6 @@
-import { Cart, CartItem, Coupon, Order, ProductVariant } from "../database/models/index.js";
+import { Cart, CartItem, Coupon, ProductVariant } from "../database/models/index.js";
 import { ok, fail } from "../utils/http.js";
+import { countUserCouponUses } from "../services/couponUsage.js";
 
 export const validateCoupon = async (req, res) => {
   const code = String(req.body.code || "").trim().toUpperCase();
@@ -18,9 +19,7 @@ export const validateCoupon = async (req, res) => {
     return fail(res, 400, "This coupon has reached its usage limit.");
 
   if (coupon.perUserLimit) {
-    const previousUses = await Order.count({
-      where: { userId: req.user.id, couponCode: coupon.code },
-    });
+    const previousUses = await countUserCouponUses(req.user.id, coupon.code);
     if (previousUses >= coupon.perUserLimit)
       return fail(res, 400, "You have already used this coupon.");
   }

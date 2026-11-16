@@ -1,3 +1,4 @@
+import { Op } from "sequelize";
 import {
   sequelize,
   Product,
@@ -15,6 +16,7 @@ import {
   Setting,
 } from "../database/models/index.js";
 import { ok, fail } from "../utils/http.js";
+import { consumeOrderCoupon, countUserCouponUses } from "../services/couponUsage.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import {
   createRazorpayOrder,
@@ -153,11 +155,11 @@ export const checkout = async (req, res) => {
       )
         throw Object.assign(new Error("Coupon unavailable."), { status: 400 });
       if (coupon.perUserLimit) {
-        const userCouponUses = await Order.count({
-          where: { userId: req.user.id, couponCode: coupon.code },
-          transaction: t,
-          lock: t.LOCK.UPDATE,
-        });
+        const userCouponUses = await countUserCouponUses(
+          req.user.id,
+          coupon.code,
+          t,
+        );
         if (userCouponUses >= coupon.perUserLimit)
           throw Object.assign(new Error("You have reached the usage limit for this coupon."), {
             status: 400,
@@ -169,8 +171,6 @@ export const checkout = async (req, res) => {
           : Number(coupon.value);
       if (coupon.maxDiscount) discount = Math.min(discount, Number(coupon.maxDiscount));
       discount = Math.min(discount, subtotal);
-      coupon.usedCount++;
-      await coupon.save({ transaction: t });
     }
     const shipping = subtotal - discount >= Number(process.env.FREE_SHIPPING_THRESHOLD) ? 0 : Number(process.env.SHIPPING_COST);
     const order = await Order.create(
@@ -188,9 +188,14 @@ export const checkout = async (req, res) => {
         total: subtotal - discount + shipping,
         shippingAddress: address,
         couponCode: coupon?.code,
+        couponConsumed: Boolean(coupon && method === "COD"),
       },
       { transaction: t },
     );
+    if (coupon && method === "COD") {
+      coupon.usedCount = Number(coupon.usedCount || 0) + 1;
+      await coupon.save({ transaction: t });
+    }
     let payment = null;
     if (method !== "COD") {
       const razorpayOrder = await createRazorpayOrder(
@@ -308,13 +313,25 @@ export const verifyPayment = async (req, res) => {
   )
     return fail(res, 400, "Payment does not match the order amount.");
 
-  order.paymentId = paymentId;
-  if (["upi", "card"].includes(payment.method)) order.paymentMethod = payment.method.toUpperCase();
   if (payment.status === "captured") {
-    order.paymentStatus = "Paid";
-    if (order.status === "Pending") order.status = "Processing";
+    await sequelize.transaction(async (transaction) => {
+      const lockedOrder = await Order.findByPk(order.id, {
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      lockedOrder.paymentId = paymentId;
+      if (["upi", "card"].includes(payment.method))
+        lockedOrder.paymentMethod = payment.method.toUpperCase();
+      lockedOrder.paymentStatus = "Paid";
+      if (lockedOrder.status === "Pending") lockedOrder.status = "Processing";
+      await lockedOrder.save({ transaction });
+      await consumeOrderCoupon(lockedOrder, transaction);
+    });
+  } else {
+    order.paymentId = paymentId;
+    if (["upi", "card"].includes(payment.method)) order.paymentMethod = payment.method.toUpperCase();
+    await order.save();
   }
-  await order.save();
   return ok(
     res,
     await Order.findByPk(order.id, { include: orderItemsWithProductImages }),
@@ -326,7 +343,13 @@ export const myOrders = async (req, res) =>
   ok(
     res,
     await Order.findAll({
-      where: { userId: req.user.id },
+      where: {
+        userId: req.user.id,
+        [Op.or]: [
+          { paymentStatus: { [Op.in]: ["Paid", "Refunded"] } },
+          { paymentMethod: "COD", status: { [Op.ne]: "Cancelled" } },
+        ],
+      },
       include: orderItemsWithProductImages,
       order: [["createdAt", "DESC"]],
     }),

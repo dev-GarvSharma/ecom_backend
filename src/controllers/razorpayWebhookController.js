@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { Order } from "../database/models/index.js";
+import { Order, sequelize } from "../database/models/index.js";
 import { fail, ok } from "../utils/http.js";
+import { consumeOrderCoupon } from "../services/couponUsage.js";
 
 const validSignature = (body, signature, secret) => {
   if (typeof signature !== "string" || !secret) return false;
@@ -43,6 +44,7 @@ export const razorpayWebhook = async (req, res) => {
     return fail(res, 400, "Invalid Razorpay webhook signature.");
   if (!where || !order) return ok(res, { received: true, matched: false }, "Webhook received.");
 
+  let captured = false;
   switch (event.event) {
     case "payment.captured":
     case "order.paid":
@@ -59,6 +61,7 @@ export const razorpayWebhook = async (req, res) => {
         return fail(res, 400, "Paid amount does not match the order.");
       if (order.paymentStatus !== "Refunded") {
         order.paymentStatus = "Paid";
+        captured = true;
         if (order.status === "Pending") order.status = "Processing";
       }
       if (payment?.id) order.paymentId = payment.id;
@@ -79,6 +82,24 @@ export const razorpayWebhook = async (req, res) => {
       return ok(res, { received: true, processed: false }, "Webhook received.");
   }
 
-  await order.save();
+  if (captured) {
+    await sequelize.transaction(async (transaction) => {
+      const lockedOrder = await Order.findByPk(order.id, {
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      if (lockedOrder.paymentStatus !== "Refunded") {
+        lockedOrder.paymentStatus = "Paid";
+        if (lockedOrder.status === "Pending") lockedOrder.status = "Processing";
+        if (payment?.id) lockedOrder.paymentId = payment.id;
+        if (["upi", "card"].includes(payment?.method))
+          lockedOrder.paymentMethod = payment.method.toUpperCase();
+        await lockedOrder.save({ transaction });
+        await consumeOrderCoupon(lockedOrder, transaction);
+      }
+    });
+  } else {
+    await order.save();
+  }
   return ok(res, { received: true, matched: true }, "Webhook processed.");
 };
