@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { Order, sequelize } from "../database/models/index.js";
 import { fail, ok } from "../utils/http.js";
 import { consumeOrderCoupon } from "../services/couponUsage.js";
+import { sendOrderConfirmationEmail } from "../services/orderConfirmationEmail.js";
 
 const validSignature = (body, signature, secret) => {
   if (typeof signature !== "string" || !secret) return false;
@@ -98,6 +99,7 @@ export const razorpayWebhook = async (req, res) => {
         await consumeOrderCoupon(lockedOrder, transaction);
       }
     });
+    await sendOrderConfirmationEmail(order.id);
   } else {
     await order.save();
   }

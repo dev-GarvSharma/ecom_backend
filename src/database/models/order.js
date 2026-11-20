@@ -37,6 +37,11 @@ const Order = sequelize.define(
     shippingAddress: { type: DataTypes.JSON, allowNull: false },
     couponCode: DataTypes.STRING,
     couponConsumed: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    confirmationEmailStatus: {
+      type: DataTypes.ENUM("pending", "sending", "sent", "failed"),
+      allowNull: false,
+      defaultValue: "pending",
+    },
   },
   { ...b, tableName: "orders" },
 );

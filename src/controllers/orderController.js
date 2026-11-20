@@ -17,6 +17,7 @@ import {
 } from "../database/models/index.js";
 import { ok, fail } from "../utils/http.js";
 import { consumeOrderCoupon, countUserCouponUses } from "../services/couponUsage.js";
+import { sendOrderConfirmationEmail } from "../services/orderConfirmationEmail.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import {
   createRazorpayOrder,
@@ -155,11 +156,7 @@ export const checkout = async (req, res) => {
       )
         throw Object.assign(new Error("Coupon unavailable."), { status: 400 });
       if (coupon.perUserLimit) {
-        const userCouponUses = await countUserCouponUses(
-          req.user.id,
-          coupon.code,
-          t,
-        );
+        const userCouponUses = await countUserCouponUses(req.user.id, coupon.code, t);
         if (userCouponUses >= coupon.perUserLimit)
           throw Object.assign(new Error("You have reached the usage limit for this coupon."), {
             status: 400,
@@ -172,7 +169,10 @@ export const checkout = async (req, res) => {
       if (coupon.maxDiscount) discount = Math.min(discount, Number(coupon.maxDiscount));
       discount = Math.min(discount, subtotal);
     }
-    const shipping = subtotal - discount >= Number(process.env.FREE_SHIPPING_THRESHOLD) ? 0 : Number(process.env.SHIPPING_COST);
+    const shipping =
+      subtotal - discount >= Number(process.env.FREE_SHIPPING_THRESHOLD)
+        ? 0
+        : Number(process.env.SHIPPING_COST);
     const order = await Order.create(
       {
         orderNumber: "EC-" + Date.now().toString(36).toUpperCase(),
@@ -288,7 +288,10 @@ export const verifyPayment = async (req, res) => {
   } = req.body;
   const order = await Order.findOne({ where: { id: req.params.id, userId: req.user.id } });
   if (!order) return fail(res, 404, "Order not found.");
-  if (order.paymentStatus === "Paid") return ok(res, order, "Payment already verified.");
+  if (order.paymentStatus === "Paid") {
+    await sendOrderConfirmationEmail(order.id);
+    return ok(res, order, "Payment already verified.");
+  }
   if (
     !order.razorpayOrderId ||
     order.razorpayOrderId !== razorpayOrderId ||
@@ -327,9 +330,11 @@ export const verifyPayment = async (req, res) => {
       await lockedOrder.save({ transaction });
       await consumeOrderCoupon(lockedOrder, transaction);
     });
+    await sendOrderConfirmationEmail(order.id);
   } else {
     order.paymentId = paymentId;
-    if (["upi", "card"].includes(payment.method)) order.paymentMethod = payment.method.toUpperCase();
+    if (["upi", "card"].includes(payment.method))
+      order.paymentMethod = payment.method.toUpperCase();
     await order.save();
   }
   return ok(
