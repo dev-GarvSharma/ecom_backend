@@ -26,13 +26,16 @@ const refresh = (u) =>
     audience: "ecom-refresh",
   });
 
-const cookie = {
+const cookieOptions = {
   httpOnly: true,
   secure: process.env.COOKIE_SECURE === "true",
   sameSite: process.env.COOKIE_SAME_SITE || "lax",
   path: "/api/v1/auth",
   maxAge: 604800000,
 };
+const sessionClient = (req) => (req.get("X-Session-Client") === "crm" ? "crm" : "storefront");
+const sessionCookieName = (client) =>
+  client === "crm" ? "crmRefreshToken" : "refreshToken";
 const accessSummary = async (userId) => {
   const user = await User.findByPk(userId, {
     include: [
@@ -74,11 +77,11 @@ const accessSummary = async (userId) => {
     },
   };
 };
-async function issue(u, res) {
+async function issue(u, res, client = "storefront") {
   const t = refresh(u);
   u.refreshTokenHash = await bcrypt.hash(t, 12);
   await u.save();
-  res.cookie("refreshToken", t, cookie);
+  res.cookie(sessionCookieName(client), t, cookieOptions);
   return {
     ...(await accessSummary(u.id)),
     accessToken: access(u),
@@ -236,7 +239,11 @@ export const confirmVerification = async (req, res) => {
     eventType: "auth.verified",
     details: { channel, purpose },
   });
-  return ok(res, await issue(user, res), purpose === "login" ? "Signed in." : "Account verified.");
+  return ok(
+    res,
+    await issue(user, res, sessionClient(req)),
+    purpose === "login" ? "Signed in." : "Account verified.",
+  );
 };
 export const login = requestVerification;
 export const me = async (req, res) =>
@@ -303,7 +310,9 @@ export const marketingPreferences = async (req, res) => {
 };
 export const refreshToken = async (req, res) => {
   try {
-    const t = req.cookies?.refreshToken;
+    const client = sessionClient(req);
+    const cookieName = sessionCookieName(client);
+    const t = req.cookies?.[cookieName];
     if (!t) return fail(res, 401, "Refresh session required.");
     const c = jwt.verify(t, process.env.JWT_REFRESH_SECRET, {
       algorithms: ["HS256"],
@@ -311,15 +320,18 @@ export const refreshToken = async (req, res) => {
       audience: "ecom-refresh",
     });
     const u = await User.unscoped().findByPk(c.sub);
-    if (!u?.refreshTokenHash || !(await bcrypt.compare(t, u.refreshTokenHash)))
+    const tokenHash = u?.refreshTokenHash;
+    if (!tokenHash || !(await bcrypt.compare(t, tokenHash)))
       return fail(res, 401, "Refresh session expired.");
-    return ok(res, await issue(u, res), "Session refreshed.");
+    return ok(res, await issue(u, res, client), "Session refreshed.");
   } catch {
     return fail(res, 401, "Refresh session expired.");
   }
 };
 export const logout = async (req, res) => {
-  const t = req.cookies?.refreshToken;
+  const client = sessionClient(req);
+  const cookieName = sessionCookieName(client);
+  const t = req.cookies?.[cookieName];
   if (t)
     try {
       const c = jwt.verify(t, process.env.JWT_REFRESH_SECRET);
@@ -329,6 +341,6 @@ export const logout = async (req, res) => {
         await u.save();
       }
     } catch {}
-  res.clearCookie("refreshToken", { ...cookie, maxAge: undefined });
+  res.clearCookie(cookieName, { ...cookieOptions, maxAge: undefined });
   return ok(res, null, "Signed out.");
 };
