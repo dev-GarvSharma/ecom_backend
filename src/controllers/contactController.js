@@ -4,6 +4,7 @@ import {
   CartItem,
   CartSession,
   ContactMessage,
+  Notification,
   Product,
   ProductVariant,
   User,
@@ -15,7 +16,10 @@ import { campaignUnsubscribeUrl, signedUnsubscribeToken } from "./marketingContr
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const paging = (req) => {
   const page = Math.max(1, Number.parseInt(req.query.page || "1", 10) || 1);
-  const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.recordPerPage || "20", 10) || 20));
+  const limit = Math.min(
+    100,
+    Math.max(1, Number.parseInt(req.query.recordPerPage || "20", 10) || 20),
+  );
   return { page, limit, offset: (page - 1) * limit };
 };
 
@@ -24,7 +28,9 @@ export const createContactMessage = async (req, res) => {
   if (req.body.website) return ok(res, null, "Your message has been received.", null, 201);
 
   const name = String(req.body.name || "").trim();
-  const email = String(req.body.email || "").trim().toLowerCase();
+  const email = String(req.body.email || "")
+    .trim()
+    .toLowerCase();
   const phone = String(req.body.phone || "").trim();
   const subject = String(req.body.subject || "").trim();
   const message = String(req.body.message || "").trim();
@@ -53,6 +59,14 @@ export const createContactMessage = async (req, res) => {
     subject,
     message,
   });
+  await Notification.create(
+    {
+      userId: null,
+      title: record.subject,
+      detail: record.id,
+      type: "contact_message",
+    }
+  );
   return ok(res, { id: record.id }, "Your message has been received.", null, 201);
 };
 
@@ -88,7 +102,8 @@ export const updateContactMessage = async (req, res) => {
       return fail(res, 400, "Admin note must be text up to 5,000 characters.");
     values.adminNote = req.body.adminNote.trim() || null;
   }
-  if (!Object.keys(values).length) return fail(res, 400, "Provide a status or admin note to update.");
+  if (!Object.keys(values).length)
+    return fail(res, 400, "Provide a status or admin note to update.");
 
   await message.update(values);
   await AuditLog.create({
@@ -103,24 +118,31 @@ export const updateContactMessage = async (req, res) => {
 };
 
 const escapeHtml = (value) =>
-  String(value).replace(/[&<>"']/g, (character) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  })[character]);
+  String(value).replace(
+    /[&<>"']/g,
+    (character) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[character],
+  );
 
 const storefrontCartUrl = () => {
   const origin = String(process.env.WEB_PUBLIC_URL || process.env.WEB_ORIGINS || "")
     .split(",")[0]
     .trim();
-  if (!origin) throw Object.assign(new Error("Set WEB_PUBLIC_URL for cart recovery emails."), { status: 503 });
+  if (!origin)
+    throw Object.assign(new Error("Set WEB_PUBLIC_URL for cart recovery emails."), { status: 503 });
   let base;
   try {
     base = new URL(origin);
   } catch {
-    throw Object.assign(new Error("WEB_PUBLIC_URL must be a valid storefront URL."), { status: 503 });
+    throw Object.assign(new Error("WEB_PUBLIC_URL must be a valid storefront URL."), {
+      status: 503,
+    });
   }
   if (process.env.NODE_ENV === "production" && base.protocol !== "https:")
     throw Object.assign(new Error("WEB_PUBLIC_URL must use HTTPS in production."), { status: 503 });
@@ -134,7 +156,11 @@ export const sendAbandonedCartRecovery = async (req, res) => {
       {
         model: Cart,
         include: [
-          { model: User, as: "user", attributes: ["id", "name", "email", "status", "isVerified", "marketingEmailSubscribed"] },
+          {
+            model: User,
+            as: "user",
+            attributes: ["id", "name", "email", "status", "isVerified", "marketingEmailSubscribed"],
+          },
           {
             model: CartItem,
             as: "items",
@@ -151,7 +177,8 @@ export const sendAbandonedCartRecovery = async (req, res) => {
     ],
   });
   if (!session) return fail(res, 404, "Abandoned cart not found.");
-  if (session.recoverySentAt) return fail(res, 409, "A recovery email has already been sent for this cart.");
+  if (session.recoverySentAt)
+    return fail(res, 409, "A recovery email has already been sent for this cart.");
 
   const customer = session.Cart?.user;
   const items = session.Cart?.items || [];
@@ -180,15 +207,19 @@ export const sendAbandonedCartRecovery = async (req, res) => {
 
   try {
     await sendGridMail({
-      personalizations: [{
-        to: [{ email: customer.email, ...(customer.name ? { name: customer.name } : {}) }],
-        headers: {
-          "List-Unsubscribe": `<${unsubscribeUrl}>`,
-          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      personalizations: [
+        {
+          to: [{ email: customer.email, ...(customer.name ? { name: customer.name } : {}) }],
+          headers: {
+            "List-Unsubscribe": `<${unsubscribeUrl}>`,
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+          },
         },
-      }],
+      ],
       from: sendGrid.from,
-      ...(process.env.SENDGRID_REPLY_TO_EMAIL ? { reply_to: { email: process.env.SENDGRID_REPLY_TO_EMAIL } } : {}),
+      ...(process.env.SENDGRID_REPLY_TO_EMAIL
+        ? { reply_to: { email: process.env.SENDGRID_REPLY_TO_EMAIL } }
+        : {}),
       subject: "Your cart is waiting",
       content: [
         { type: "text/plain", value: text },

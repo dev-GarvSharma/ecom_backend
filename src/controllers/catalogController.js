@@ -9,7 +9,6 @@ import {
   ProductFeatureNote,
   ProductFaq,
   Promotion,
-  sequelize,
 } from "../database/models/index.js";
 import { fail, ok } from "../utils/http.js";
 
@@ -35,15 +34,6 @@ export const catalog = async (req, res) => {
   const note = String(req.query.note || req.query.notes || "")
     .trim()
     .slice(0, 60);
-  if (note)
-    where[Op.or] = ["top_notes", "heart_notes", "base_notes"].map((field) =>
-      sequelize.where(
-        sequelize.fn("JSON_SEARCH", sequelize.col(`Product.${field}`), "one", `%${note}%`),
-        {
-          [Op.ne]: null,
-        },
-      ),
-    );
   const minPrice = Number(req.query.minPrice ?? req.query.priceMin);
   const maxPrice = Number(req.query.maxPrice ?? req.query.priceMax);
   const variantWhere = { active: true };
@@ -61,7 +51,9 @@ export const catalog = async (req, res) => {
       {
         model: ProductFeatureNote,
         as: "featureNotes",
-        separate: true,
+        ...(note
+          ? { where: { text: { [Op.like]: `%${note}%` } }, required: true }
+          : { separate: true }),
         order: [["position", "ASC"]],
       },
       { model: ProductFaq, as: "faqs", separate: true, order: [["position", "ASC"]] },
