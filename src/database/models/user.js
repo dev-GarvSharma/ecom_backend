@@ -15,9 +15,6 @@ const User = sequelize.define(
     email: { type: DataTypes.STRING(254), allowNull: true, unique: true },
     phone: { type: DataTypes.STRING(32), allowNull: false, unique: true },
     isVerified: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
-    marketingEmailSubscribed: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
-    marketingEmailSubscribedAt: DataTypes.DATE,
-    marketingEmailUnsubscribedAt: DataTypes.DATE,
     roleId: { type: DataTypes.UUID, allowNull: false },
     role: { type: DataTypes.ENUM("user", "admin"), defaultValue: "user" },
     status: {

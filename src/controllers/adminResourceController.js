@@ -20,6 +20,7 @@ import {
   Promotion,
   ProductVariant,
   CampaignDelivery,
+  NewsletterSubscriber,
   sequelize,
 } from "../database/models/index.js";
 import { ok, fail } from "../utils/http.js";
@@ -101,7 +102,10 @@ export const adminList = async (req, res) => {
           { model: OrderItem, as: "items" },
         ]
       : resource === "customers"
-        ? [{ model: Role, as: "primaryRole", attributes: ["id", "name"] }]
+        ? [
+            { model: Role, as: "primaryRole", attributes: ["id", "name"] },
+            { model: NewsletterSubscriber, as: "newsletterSubscription", attributes: ["status"] },
+          ]
         : [];
   const { rows, count } = await M.findAndCountAll({
     where,
@@ -145,7 +149,7 @@ export const adminList = async (req, res) => {
         email: u.email,
         phone: u.phone,
         isVerified: u.isVerified,
-        marketingEmailSubscribed: u.marketingEmailSubscribed,
+        marketingEmailSubscribed: u.newsletterSubscription?.status === "subscribed",
         primaryRole: u.primaryRole?.name || null,
         location: u.location || "",
         orders: totalOrders,
@@ -204,10 +208,10 @@ export const razorpayMode = async (_req, res) => {
     res,
     {
       mode: setting?.value === "test" ? "test" : "live",
-      testConfigured: Boolean(
-        process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET,
+      testConfigured: Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
+      liveConfigured: Boolean(
+        process.env.RAZORPAY_LIVE_KEY_ID && process.env.RAZORPAY_LIVE_KEY_SECRET,
       ),
-      liveConfigured: Boolean(process.env.RAZORPAY_LIVE_KEY_ID && process.env.RAZORPAY_LIVE_KEY_SECRET),
     },
     "Razorpay mode loaded.",
   );
@@ -235,10 +239,10 @@ export const setRazorpayMode = async (req, res) => {
     res,
     {
       mode,
-      testConfigured: Boolean(
-        process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET,
+      testConfigured: Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
+      liveConfigured: Boolean(
+        process.env.RAZORPAY_LIVE_KEY_ID && process.env.RAZORPAY_LIVE_KEY_SECRET,
       ),
-      liveConfigured: Boolean(process.env.RAZORPAY_LIVE_KEY_ID && process.env.RAZORPAY_LIVE_KEY_SECRET),
     },
     `Razorpay ${mode} mode enabled.`,
   );
@@ -853,7 +857,14 @@ export const adminAbandonedCarts = async (req, res) => {
       {
         model: Cart,
         include: [
-          { model: User, as: "user", attributes: ["id", "name", "email", "phone"] },
+          {
+            model: User,
+            as: "user",
+            attributes: ["id", "name", "email", "phone"],
+            include: [
+              { model: NewsletterSubscriber, as: "newsletterSubscription", attributes: ["status"] },
+            ],
+          },
           { model: CartItem, as: "items" },
         ],
       },

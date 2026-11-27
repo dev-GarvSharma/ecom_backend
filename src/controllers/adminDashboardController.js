@@ -16,6 +16,7 @@ import {
   Campaign,
   Setting,
   AuditLog,
+  NewsletterSubscriber,
 } from "../database/models/index.js";
 import { adminList } from "./adminResourceController.js";
 import * as adminCatalog from "./adminCatalogController.js";
@@ -478,15 +479,7 @@ export const analytics = async (req, res) => {
 
 export const marketing = async (_q, res) => {
   const [subscribers, totalCampaigns, groupedCampaigns] = await Promise.all([
-    User.count({
-      where: {
-        role: "user",
-        status: "active",
-        isVerified: true,
-        marketingEmailSubscribed: true,
-        email: { [Op.ne]: null },
-      },
-    }),
+    NewsletterSubscriber.count({ where: { status: "subscribed" } }),
     Campaign.count(),
     Campaign.count({ attributes: ["status"], group: ["status"] }),
   ]);

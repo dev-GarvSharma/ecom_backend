@@ -12,7 +12,7 @@ import { authenticate } from "../middleware/security.js";
 import { asyncHandler } from "../utils/http.js";
 import { record } from "../controllers/interactionController.js";
 import adminRoutes from "./adminRoutes.js";
-import { unsubscribe, unsubscribePage } from "../controllers/marketingController.js";
+import { subscribeNewsletter, unsubscribe, unsubscribePage } from "../controllers/marketingController.js";
 
 const router = Router();
 router.get("/health", (_req, res) => res.json({ ok: true }));
@@ -30,5 +30,6 @@ router.use("/blogs", blogRoutes);
 router.post("/interactions", authenticate, asyncHandler(record));
 router.get("/marketing/unsubscribe", unsubscribePage);
 router.post("/marketing/unsubscribe", asyncHandler(unsubscribe));
+router.post("/marketing/subscribe", asyncHandler(subscribeNewsletter));
 router.use("/admin", adminRoutes);
 export default router;

@@ -27,6 +27,7 @@ import CampaignDelivery from "./campaignDelivery.js";
 import ContactMessage from "./contactMessage.js";
 import BlogPost from "./blogPost.js";
 import BlogComment from "./blogComment.js";
+import NewsletterSubscriber from "./newsletterSubscriber.js";
 import "./associations.js";
 import sequelize from "../../config/database.js";
 
@@ -60,5 +61,6 @@ export {
   ContactMessage,
   BlogPost,
   BlogComment,
+  NewsletterSubscriber,
   sequelize,
 };

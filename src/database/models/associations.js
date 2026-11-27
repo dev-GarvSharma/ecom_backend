@@ -25,6 +25,7 @@ import BlogComment from "./blogComment.js";
 import UserInteractionEvent from "./userInteractionEvent.js";
 import AuditLog from "./auditLog.js";
 import CampaignDelivery from "./campaignDelivery.js";
+import NewsletterSubscriber from "./newsletterSubscriber.js";
 
 Category.hasMany(Product, { foreignKey: "categoryId", as: "products" });
 Product.belongsTo(Category, { foreignKey: "categoryId", as: "category" });
@@ -128,6 +129,10 @@ Campaign.hasMany(CampaignDelivery, {
 CampaignDelivery.belongsTo(Campaign, { foreignKey: "campaignId", as: "campaign" });
 User.hasMany(CampaignDelivery, { foreignKey: "userId", as: "campaignDeliveries" });
 CampaignDelivery.belongsTo(User, { foreignKey: "userId", as: "recipient" });
+User.hasOne(NewsletterSubscriber, { foreignKey: "userId", as: "newsletterSubscription", onDelete: "CASCADE" });
+NewsletterSubscriber.belongsTo(User, { foreignKey: "userId", as: "user" });
+NewsletterSubscriber.hasMany(CampaignDelivery, { foreignKey: "subscriberId", as: "deliveries" });
+CampaignDelivery.belongsTo(NewsletterSubscriber, { foreignKey: "subscriberId", as: "subscriber" });
 CartItem.belongsTo(Promotion, { foreignKey: "promotionId", as: "promotion" });
 Promotion.hasMany(CartItem, { foreignKey: "promotionId", as: "cartItems" });
 Promotion.belongsTo(ProductVariant, {

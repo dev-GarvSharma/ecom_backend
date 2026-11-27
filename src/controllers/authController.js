@@ -8,6 +8,7 @@ import {
   UserInteractionEvent,
   Role,
   Permission,
+  NewsletterSubscriber,
 } from "../database/models/index.js";
 import { ok, fail } from "../utils/http.js";
 const access = (u) =>
@@ -47,6 +48,7 @@ const accessSummary = async (userId) => {
         attributes: ["code"],
         through: { attributes: [] },
       },
+      { model: NewsletterSubscriber, as: "newsletterSubscription", attributes: ["status"] },
     ],
   });
   const roles = user?.roles || [];
@@ -69,7 +71,7 @@ const accessSummary = async (userId) => {
       email: user.email,
       phone: user.phone,
       isVerified: user.isVerified,
-      marketingEmailSubscribed: user.marketingEmailSubscribed,
+      marketingEmailSubscribed: user.newsletterSubscription?.status === "subscribed",
       role: user.role,
       primaryRole: user.primaryRole?.name || null,
       roles: roles.map((role) => role.name),
@@ -116,10 +118,16 @@ export const register = async (req, res) => {
     email,
     phone,
     isVerified: false,
-    marketingEmailSubscribed,
-    marketingEmailSubscribedAt: marketingEmailSubscribed ? new Date() : null,
     roleId: customerRole.id,
   });
+  if (email) {
+    const existingSubscription = await NewsletterSubscriber.findOne({ where: { email } });
+    if (existingSubscription) await existingSubscription.update({
+      userId: u.id, name,
+      ...(marketingEmailSubscribed ? { status: "subscribed", subscribedAt: new Date(), unsubscribedAt: null } : {}),
+    });
+    else if (marketingEmailSubscribed) await NewsletterSubscriber.create({ userId: u.id, email, name, status: "subscribed", subscribedAt: new Date() });
+  }
   await u.addRole(customerRole);
   const otp = await sendVerification(u, "sms", phone, "register");
   if (marketingEmailSubscribed)
@@ -258,17 +266,13 @@ export const updateProfile = async (req, res) => {
     return fail(res, 409, "Email address is already registered.");
   const user = await User.unscoped().findByPk(req.user.id);
   const changed = user.email !== email;
-  const wasSubscribed = user.marketingEmailSubscribed;
-  await user.update({
-    email,
-    ...(changed ? {
-      marketingEmailSubscribed: false,
-      marketingEmailUnsubscribedAt: wasSubscribed ? new Date() : user.marketingEmailUnsubscribedAt,
-    } : {}),
-  });
+  const subscription = await NewsletterSubscriber.findOne({ where: { userId: user.id } });
+  const wasSubscribed = subscription?.status === "subscribed";
+  await user.update({ email });
+  if (changed && subscription) await subscription.update({ email: email || subscription.email, status: "unsubscribed", unsubscribedAt: wasSubscribed ? new Date() : subscription.unsubscribedAt });
   if (changed && wasSubscribed)
     await UserInteractionEvent.create({ userId: user.id, eventType: "marketing.email_unsubscribed", details: { source: "email_changed" } });
-  return ok(res, { email: user.email, marketingEmailSubscribed: user.marketingEmailSubscribed }, "Account email updated.");
+  return ok(res, { email: user.email, marketingEmailSubscribed: subscription?.status === "subscribed" && !changed }, "Account email updated.");
 };
 export const history = async (req, res) =>
   ok(
@@ -284,29 +288,32 @@ export const history = async (req, res) =>
 export const marketingPreferences = async (req, res) => {
   const user = await User.unscoped().findByPk(req.user.id);
   if (!user) return fail(res, 404, "Account not found.");
+  let subscription = await NewsletterSubscriber.findOne({ where: { userId: user.id } });
   if (req.method === "GET")
     return ok(res, {
       email: user.email,
-      subscribed: user.marketingEmailSubscribed,
-      subscribedAt: user.marketingEmailSubscribedAt,
-      unsubscribedAt: user.marketingEmailUnsubscribedAt,
+      subscribed: subscription?.status === "subscribed",
+      subscribedAt: subscription?.subscribedAt || null,
+      unsubscribedAt: subscription?.unsubscribedAt || null,
     }, "Marketing preferences loaded.");
   if (typeof req.body.subscribed !== "boolean")
     return fail(res, 400, "subscribed must be true or false.");
   if (req.body.subscribed && (!user.email || !user.isVerified || user.status !== "active"))
     return fail(res, 400, "Add an email address and verify your account before subscribing.");
   const now = new Date();
-  await user.update({
-    marketingEmailSubscribed: req.body.subscribed,
-    marketingEmailSubscribedAt: req.body.subscribed ? now : user.marketingEmailSubscribedAt,
-    marketingEmailUnsubscribedAt: req.body.subscribed ? null : now,
+  if (subscription) await subscription.update({
+    email: user.email, name: user.name,
+    status: req.body.subscribed ? "subscribed" : "unsubscribed",
+    subscribedAt: req.body.subscribed ? now : subscription.subscribedAt,
+    unsubscribedAt: req.body.subscribed ? null : now,
   });
+  else if (req.body.subscribed) subscription = await NewsletterSubscriber.create({ userId: user.id, email: user.email, name: user.name, status: "subscribed", subscribedAt: now });
   await UserInteractionEvent.create({
     userId: user.id,
     eventType: req.body.subscribed ? "marketing.email_subscribed" : "marketing.email_unsubscribed",
     details: { email: user.email },
   });
-  return ok(res, { subscribed: user.marketingEmailSubscribed }, "Marketing preference saved.");
+  return ok(res, { subscribed: req.body.subscribed }, "Marketing preference saved.");
 };
 export const refreshToken = async (req, res) => {
   try {

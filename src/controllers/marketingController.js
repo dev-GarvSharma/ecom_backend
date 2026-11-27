@@ -5,17 +5,12 @@ import {
   Campaign,
   CampaignDelivery,
   User,
+  NewsletterSubscriber,
 } from "../database/models/index.js";
 import { fail, ok } from "../utils/http.js";
 import { sendGridConfig, sendGridMail } from "../services/sendgrid.js";
 
-const eligibleWhere = {
-  role: "user",
-  status: "active",
-  isVerified: true,
-  marketingEmailSubscribed: true,
-  email: { [Op.ne]: null },
-};
+const eligibleWhere = { status: "subscribed" };
 const plainText = (html) => html
   .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
   .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, "\n")
@@ -30,8 +25,8 @@ const plainText = (html) => html
   .replace(/[ \t]+/g, " ")
   .replace(/\n\s*\n+/g, "\n\n")
   .trim();
-export const signedUnsubscribeToken = (userId) => jwt.sign(
-  { sub: userId, scope: "marketing-email-unsubscribe" },
+export const signedUnsubscribeToken = (subscriberId) => jwt.sign(
+  { sub: subscriberId, scope: "marketing-email-unsubscribe" },
   process.env.JWT_ACCESS_SECRET,
   { algorithm: "HS256", expiresIn: "2y", issuer: "ecom-api", audience: "ecom-marketing" },
 );
@@ -64,7 +59,7 @@ export const sendCampaign = async (req, res) => {
     return fail(res, error.status || 503, error.message);
   }
 
-  const recipientCount = await User.count({ where: eligibleWhere });
+  const recipientCount = await NewsletterSubscriber.count({ where: eligibleWhere });
   if (!recipientCount)
     return fail(res, 409, "There are no active, verified email subscribers for this campaign.");
 
@@ -79,16 +74,18 @@ export const sendCampaign = async (req, res) => {
   let failed = 0;
   let fatalError = null;
   try {
-    const recipients = await User.findAll({
+    const recipients = await NewsletterSubscriber.findAll({
       where: eligibleWhere,
-      attributes: ["id", "name", "email"],
+      include: [{ model: User, as: "user", attributes: ["id", "name", "status", "isVerified"] }],
       order: [["id", "ASC"]],
     });
-    for (let offset = 0; offset < recipients.length; offset += 1000) {
-      const snapshot = recipients.slice(offset, offset + 1000);
+    const eligibleRecipients = recipients.filter((subscriber) => !subscriber.user || (subscriber.user.status === "active" && subscriber.user.isVerified));
+    for (let offset = 0; offset < eligibleRecipients.length; offset += 1000) {
+      const snapshot = eligibleRecipients.slice(offset, offset + 1000);
       await CampaignDelivery.bulkCreate(snapshot.map((user) => ({
         campaignId: campaign.id,
-        userId: user.id,
+        userId: user.userId,
+        subscriberId: user.id,
         email: user.email,
         status: "queued",
       })));
@@ -97,17 +94,16 @@ export const sendCampaign = async (req, res) => {
     while (true) {
       const pending = await CampaignDelivery.findAll({
         where: { campaignId: campaign.id, status: "queued" },
-        include: [{ model: User, as: "recipient", attributes: ["id", "name", "email", "status", "isVerified", "marketingEmailSubscribed"] }],
+        include: [{ model: NewsletterSubscriber, as: "subscriber", include: [{ model: User, as: "user", attributes: ["id", "name", "status", "isVerified"] }] }],
         order: [["createdAt", "ASC"], ["id", "ASC"]],
         limit: 1000,
       });
       if (!pending.length) break;
 
       const eligible = pending.filter((delivery) =>
-        delivery.recipient?.status === "active" &&
-        delivery.recipient?.isVerified &&
-        delivery.recipient?.marketingEmailSubscribed &&
-        delivery.recipient?.email,
+        delivery.subscriber?.status === "subscribed" &&
+        (!delivery.subscriber.user || (delivery.subscriber.user.status === "active" && delivery.subscriber.user.isVerified)) &&
+        delivery.subscriber?.email,
       );
       const excluded = pending.filter((delivery) => !eligible.includes(delivery));
       if (excluded.length) {
@@ -120,10 +116,10 @@ export const sendCampaign = async (req, res) => {
       if (!eligible.length) continue;
 
       const personalizations = eligible.map((delivery) => {
-        const user = delivery.recipient;
+        const user = delivery.subscriber;
         const url = campaignUnsubscribeUrl(req, signedUnsubscribeToken(user.id));
         return {
-          to: [{ email: user.email, ...(user.name ? { name: user.name } : {}) }],
+          to: [{ email: user.email, ...((user.name || user.user?.name) ? { name: user.name || user.user.name } : {}) }],
           substitutions: { "-unsubscribe_url-": url },
           headers: {
             "List-Unsubscribe": `<${url}>`,
@@ -201,12 +197,12 @@ export const marketingSubscribers = async (req, res) => {
       { name: { [Op.like]: `%${search}%` } },
       { email: { [Op.like]: `%${search}%` } },
     ] }];
-  const { rows, count } = await User.findAndCountAll({
+  const { rows, count } = await NewsletterSubscriber.findAndCountAll({
     where,
-    attributes: ["id", "name", "email", "marketingEmailSubscribedAt"],
+    attributes: ["id", "userId", "name", "email", "subscribedAt"],
     limit,
     offset: (page - 1) * limit,
-    order: [["marketingEmailSubscribedAt", "DESC"]],
+    order: [["subscribedAt", "DESC"]],
   });
   return ok(res, rows, "Email subscribers loaded.", {
     totalRecords: count,
@@ -234,18 +230,18 @@ export const unsubscribePage = (req, res) => {
 
 export const unsubscribe = async (req, res) => {
   const token = String(req.query.token || req.body?.token || "");
-  let userId;
+  let subscriberId;
   try {
-    userId = verifyUnsubscribeToken(token);
+    subscriberId = verifyUnsubscribeToken(token);
   } catch {
     return fail(res, 400, "Unsubscribe link is invalid or expired.");
   }
-  const user = await User.unscoped().findByPk(userId);
-  if (user?.marketingEmailSubscribed) {
-    await user.update({ marketingEmailSubscribed: false, marketingEmailUnsubscribedAt: new Date() });
+  const subscriber = await NewsletterSubscriber.findByPk(subscriberId);
+  if (subscriber?.status === "subscribed") {
+    await subscriber.update({ status: "unsubscribed", unsubscribedAt: new Date() });
     const { UserInteractionEvent } = await import("../database/models/index.js");
-    await UserInteractionEvent.create({
-      userId: user.id,
+    if (subscriber.userId) await UserInteractionEvent.create({
+      userId: subscriber.userId,
       eventType: "marketing.email_unsubscribed",
       details: { source: "email_link" },
     });
@@ -253,4 +249,18 @@ export const unsubscribe = async (req, res) => {
   if (req.accepts("html"))
     return res.type("html").send("<h1>You are unsubscribed.</h1><p>You will not receive further marketing emails.</p>");
   return ok(res, { unsubscribed: true }, "Email preferences updated.");
+};
+
+export const subscribeNewsletter = async (req, res) => {
+  const email = String(req.body.email || "").trim().toLowerCase();
+  const name = String(req.body.name || "").trim().slice(0, 120) || null;
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    return fail(res, 400, "Enter a valid email address.");
+  const user = await User.findOne({ where: { email } });
+  const [subscriber] = await NewsletterSubscriber.findOrCreate({
+    where: { email },
+    defaults: { userId: user?.id || null, email, name: name || user?.name || null, status: "subscribed", subscribedAt: new Date() },
+  });
+  if (subscriber.status !== "subscribed") await subscriber.update({ userId: subscriber.userId || user?.id || null, name: name || user?.name || subscriber.name, status: "subscribed", subscribedAt: new Date(), unsubscribedAt: null });
+  return ok(res, { subscribed: true }, "You are subscribed to offer emails.", null, 201);
 };

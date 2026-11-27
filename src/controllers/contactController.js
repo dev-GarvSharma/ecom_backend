@@ -8,6 +8,7 @@ import {
   Product,
   ProductVariant,
   User,
+  NewsletterSubscriber,
 } from "../database/models/index.js";
 import { fail, ok } from "../utils/http.js";
 import { sendGridConfig, sendGridMail } from "../services/sendgrid.js";
@@ -159,7 +160,8 @@ export const sendAbandonedCartRecovery = async (req, res) => {
           {
             model: User,
             as: "user",
-            attributes: ["id", "name", "email", "status", "isVerified", "marketingEmailSubscribed"],
+            attributes: ["id", "name", "email", "status", "isVerified"],
+            include: [{ model: NewsletterSubscriber, as: "newsletterSubscription", attributes: ["id", "status"] }],
           },
           {
             model: CartItem,
@@ -184,7 +186,7 @@ export const sendAbandonedCartRecovery = async (req, res) => {
   const items = session.Cart?.items || [];
   if (!customer?.email || customer.status !== "active" || !customer.isVerified)
     return fail(res, 409, "This customer has no active, verified email address.");
-  if (!customer.marketingEmailSubscribed)
+  if (customer.newsletterSubscription?.status !== "subscribed")
     return fail(res, 409, "This customer has not subscribed to marketing email.");
   if (!items.length) return fail(res, 409, "This cart no longer contains items.");
 
@@ -194,7 +196,7 @@ export const sendAbandonedCartRecovery = async (req, res) => {
   try {
     sendGrid = sendGridConfig();
     cartUrl = storefrontCartUrl();
-    unsubscribeUrl = campaignUnsubscribeUrl(req, signedUnsubscribeToken(customer.id));
+    unsubscribeUrl = campaignUnsubscribeUrl(req, signedUnsubscribeToken(customer.newsletterSubscription.id));
   } catch (error) {
     return fail(res, error.status || 503, error.message);
   }
